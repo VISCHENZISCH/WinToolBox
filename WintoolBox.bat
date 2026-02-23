@@ -1,8 +1,31 @@
 @echo off
 setlocal enabledelayedexpansion
+for /f %%a in ('copy /z "%~f0" nul') do set "CR=%%a"
+:: --- ANSI Color Definitions ---
+set "ESC= "
+for /f %%A in ('echo prompt $E ^| cmd') do set "ESC=%%A"
+set "RED=%ESC%[38;2;158;34;34m"
+set "TEAL=%ESC%[38;2;2;223;164m"
+set "WHITE=%ESC%[97m"
+set "RESET=%ESC%[0m"
+
+:: Optimisations de performance
+set "FAST_MODE=1"
+set "SKIP_ANIMATIONS=0"
+set "CACHE_ENABLED=1"
+
+:: Configuration rapide
+if "%FAST_MODE%"=="1" (
+    set "TIMEOUT_DURATION=0"
+    set "ANIMATION_SPEED=0"
+) else (
+    set "TIMEOUT_DURATION=1"
+    set "ANIMATION_SPEED=1"
+)
+
 chcp 65001 >nul 2>&1
-title WinToolBox - Security Suite v2.0 by vischenzisch
-color 0B
+title WinToolBox - Security Suite v2.0
+echo %WHITE%
 
 :: =====================================================
 ::   WinToolBox v2.0 - Suite de sécurité avancée
@@ -14,15 +37,24 @@ color 0B
 :: --- Vérification des privilèges administrateur (optionnelle) ---
 net session >nul 2>&1
 if %errorlevel% neq 0 (
-    color 0E
+    echo %WHITE%
     echo [ATTENTION] Certains modules nécessitent des privilèges administrateur.
     echo Vous pouvez continuer, mais certaines fonctionnalités pourraient être limitées.
     echo.
     pause
 )
 
-:: --- Création du dossier logs s’il n’existe pas ---
+:: --- Création des dossiers nécessaires ---
 if not exist "logs" mkdir "logs" >nul 2>&1
+if not exist "cache" mkdir "cache" >nul 2>&1
+
+:: --- Initialisation du cache ---
+if "%CACHE_ENABLED%"=="1" (
+    if not exist "cache\system_info.cache" (
+        echo [CACHE] Initialisation du cache système...
+        echo. > "cache\system_info.cache"
+    )
+)
 
 :menu
 cls
@@ -30,31 +62,11 @@ call :display_logo
 call :display_header
 call :display_menu
 echo.
-if "%~1"=="" (
-    echo.
-    echo Veuillez exécuter le script avec un paramètre :
-    echo Exemple : WintoolBox.bat 1
-    echo.
-    echo Options disponibles :
-    echo [1] Informations système
-    echo [2] Nettoyage - Optimisation
-    echo [3] Surveillance réseau
-    echo [4] Gestion des utilisateurs
-    echo [5] Sécurité - Pare-feu
-    echo [6] Sauvegarde - Restauration
-    echo [7] Audit de sécurité avancé
-    echo [8] Détection de menaces
-    echo [9] Surveillance réseau temps réel
-    echo [10] Scanner de vulnérabilités
-    echo [11] Outils de chiffrement
-    echo [12] Journalisation sécurisée
-    echo [13] Quitter
-    echo.
-    pause
-    goto end
-) else (
-    set "choice=%~1"
-)
+echo.
+echo.
+set /p choice=
+if "%choice%"=="" set "choice=13"
+goto validate_choice
 
 :: --- Validation robuste de la saisie ---
 :validate_choice
@@ -140,22 +152,23 @@ if "%~1"=="13" goto end
 if not defined module goto invalid
 
 echo.
-echo [INFO] Exécution du module : %module_name%
-echo -------------------------------------
+    echo  ...........................................................................
+    echo  :  [RUN] EXÉCUTION DU MODULE: %module_name%
+    echo  :.........................................................................:
 
 :: --- Exécution du module choisi ---
 if exist "%module%" (
     call "%module%"
     set "exit_code=!errorlevel!"
     if !exit_code! neq 0 (
-        color 0C
+        echo %WHITE%
         echo [ERREUR] Le module s'est terminé avec le code : !exit_code!
-        color 0B
+        echo %WHITE%
     )
 ) else (
-    color 0C
+    echo %WHITE%
     echo [ERREUR] Le module "%module%" est introuvable !
-    color 0B
+    echo %WHITE%
 )
 
 echo.
@@ -165,10 +178,16 @@ goto :eof
 
 
 :invalid
-color 0C
+echo %WHITE%
 echo.
-echo [ERREUR] Option invalide. Veuillez entrer un nombre entre 1 et 13.
-color 0B
+echo  ...........................................................................
+echo  :                          [ERR] ERREUR DE SAISIE                         :
+echo  :.........................................................................:
+echo  :                                                                         :
+echo  :  Option invalide. Veuillez entrer un nombre entre 1 et 13.              :
+echo  :                                                                         :
+echo  :.........................................................................:
+echo %WHITE%
 timeout /t 2 >nul
 goto end
 
@@ -176,116 +195,117 @@ goto end
 
 :end
 cls
-color 0A
+echo %WHITE%
 call :display_logo
-echo ================================================================
-echo      WinToolBox - Security Suite v2.0 - Fermeture
-echo ================================================================
-echo.
-echo Merci d'avoir utilisé WinToolBox v2.0 by vischenzisch
+echo  ...........................................................................
+echo  :                         [EXIT] FERMETURE DU SYSTÈME                     :   
+echo  :.........................................................................:
+echo  :                                                                         :
+echo  :  Merci d'avoir utilisé WinToolBox v2.0 by vischenzisch                  :
+echo  :                                                                         :
+echo  :.........................................................................:
 call :loading_animation "Fermeture en cours" 3
 endlocal
 exit /b 0
 
 :display_logo
-color 0B
 echo.
-echo     ╔══════════════════════════════════════════════════════════════════════════════╗
-echo     ║                                                                              ║
-echo     ║     ██╗    ██╗██╗███╗   ██╗████████╗ ██████╗  ██████╗ ██╗     ██╗██╗  ██╗    ║
-echo     ║     ██║    ██║██║████╗  ██║╚══██╔══╝██╔═══██╗██╔═══██╗██║     ██║╚██╗██╔╝    ║
-echo     ║     ██║ █╗ ██║██║██╔██╗ ██║   ██║   ██║   ██║██║   ██║██║     ██║ ╚███╔╝     ║
-echo     ║     ██║███╗██║██║██║╚██╗██║   ██║   ██║   ██║██║   ██║██║     ██║ ██╔██╗     ║
-echo     ║     ╚███╔███╔╝██║██║ ╚████║   ██║   ╚██████╔╝╚██████╔╝███████╗██║██╔╝ ██╗    ║
-echo     ║      ╚══╝╚══╝ ╚═╝╚═╝  ╚═══╝   ╚═╝    ╚═════╝  ╚═════╝ ╚══════╝╚═╝╚═╝  ╚═╝    ║
-echo     ║                                                                              ║
-echo     ║                    🔒 Security Suite v2.0 - Professional Edition 🔒        ║
-echo     ║                              by vischenzisch                                ║
-echo     ║                                                                              ║
-echo     ╚══════════════════════════════════════════════════════════════════════════════╝
-echo.
+echo %RED%
+echo  ...........................................................................
+echo  :                                                                         :
+echo  :  WinToolBox - Security Suite v2.0                                       :
+echo  :  Professional Edition by vischenzisch                                   :
+echo  :  .....................................................................  :
+echo  :                                                                         :
+echo  :  [SYSTEM SECURE]         [! LOGS PENDING]                [ADMIN: YES]   :
+echo  :                                                                         :
+echo  :.........................................................................:
+echo %WHITE%
+goto :eof
+
+:fade_in_effect
+if "%SKIP_ANIMATIONS%"=="1" goto :eof
+for /l %%i in (1,1,2) do (
+    timeout /t %TIMEOUT_DURATION% >nul
+)
+goto :eof
+
+:sparkle_effect
+if "%SKIP_ANIMATIONS%"=="1" goto :eof
+echo %WHITE%
+timeout /t %TIMEOUT_DURATION% >nul
+echo %WHITE%
 goto :eof
 
 :display_header
-color 0E
-echo     ╔══════════════════════════════════════════════════════════════════════════════╗
-echo     ║  📊 SYSTÈME: %computername%  │  👤 UTILISATEUR: %username%  │  📅 DATE: %date%  ║
-echo     ╚══════════════════════════════════════════════════════════════════════════════╝
-color 0B
 goto :eof
 
 :display_menu
-color 0A
-echo     ╔══════════════════════════════════════════════════════════════════════════════╗
-echo     ║                              🛠️  MENU PRINCIPAL                              ║
-echo     ╠══════════════════════════════════════════════════════════════════════════════╣
-echo     ║  [1]  📊 Informations système                                              ║
-echo     ║  [2]  🧹 Nettoyage - Optimisation                                          ║
-echo     ║  [3]  🌐 Surveillance réseau                                               ║
-echo     ║  [4]  👥 Gestion des utilisateurs                                          ║
-echo     ║  [5]  🔒 Sécurité - Pare-feu                                              ║
-echo     ║  [6]  💾 Sauvegarde - Restauration                                        ║
-echo     ║  [7]  🔍 Audit de sécurité avancé                                         ║
-echo     ║  [8]  ⚠️  Détection de menaces                                            ║
-echo     ║  [9]  📡 Surveillance réseau temps réel                                   ║
-echo     ║  [10] 🛡️  Scanner de vulnérabilités                                      ║
-echo     ║  [11] 🔐 Outils de chiffrement                                            ║
-echo     ║  [12] 📝 Journalisation sécurisée                                         ║
-echo     ║  [13] 🚪 Quitter                                                          ║
-echo     ╚══════════════════════════════════════════════════════════════════════════════╝
-color 0B
+echo  :  ^>^>^> MODULE SELECTION ^>^>^>                                            :
+echo  :                                                                         :
+echo  %TEAL%[1] SYSTEM   [2] CLEANUP  [3] NETWORK  [4] USERS    [5] SECURITY [6] BACKUP%WHITE%
+echo  ---------------------------------------------------------------------------
+echo  [7] THREATS  [8] LOGGING  [9] AUDIT    [10] SCAN    [11] NETMON  [12] CRYPTO
+echo  ---------------------------------------------------------------------------
+echo  %TEAL%[13] UPDATE   [14] EXIT%WHITE%
+echo.
+set /p "choice=%RED%WinToolBox%RESET% %WHITE%^> ENTER CHOICE: %RESET%"
+goto :eof
+
+:menu_glow_effect
+echo %WHITE%
+timeout /t 0 >nul
+echo %WHITE%
+timeout /t 0 >nul
+goto :eof
+
+:menu_pulse_effect
+echo %WHITE%
+timeout /t 0 >nul
+echo %WHITE%
 goto :eof
 
 :loading_animation
 set "text=%~1"
 set "duration=%~2"
 if "%duration%"=="" set "duration=3"
-set "frames=0"
-:loading_loop
-if %frames% equ 0 (
-    echo %text% [                    ] 0%%
-) else if %frames% equ 1 (
-    echo %text% [█                   ] 5%%
-) else if %frames% equ 2 (
-    echo %text% [██                  ] 10%%
-) else if %frames% equ 3 (
-    echo %text% [███                 ] 15%%
-) else if %frames% equ 4 (
-    echo %text% [████                ] 20%%
-) else if %frames% equ 5 (
-    echo %text% [█████               ] 25%%
-) else if %frames% equ 6 (
-    echo %text% [██████              ] 30%%
-) else if %frames% equ 7 (
-    echo %text% [███████             ] 35%%
-) else if %frames% equ 8 (
-    echo %text% [████████            ] 40%%
-) else if %frames% equ 9 (
-    echo %text% [█████████           ] 45%%
-) else if %frames% equ 10 (
-    echo %text% [██████████          ] 50%%
-) else if %frames% equ 11 (
-    echo %text% [███████████         ] 55%%
-) else if %frames% equ 12 (
-    echo %text% [████████████        ] 60%%
-) else if %frames% equ 13 (
-    echo %text% [█████████████       ] 65%%
-) else if %frames% equ 14 (
-    echo %text% [██████████████      ] 70%%
-) else if %frames% equ 15 (
-    echo %text% [███████████████     ] 75%%
-) else if %frames% equ 16 (
-    echo %text% [████████████████    ] 80%%
-) else if %frames% equ 17 (
-    echo %text% [█████████████████   ] 85%%
-) else if %frames% equ 18 (
-    echo %text% [██████████████████  ] 90%%
-) else if %frames% equ 19 (
-    echo %text% [███████████████████ ] 95%%
-) else if %frames% equ 20 (
-    echo %text% [████████████████████] 100%%
+if "%SKIP_ANIMATIONS%"=="1" (
+    echo  [:.........................................................................:]
+    echo  :  %text%... [████████████████████████████████████████] 100%% [OK]  :
+    echo  :.........................................................................:
     goto :eof
 )
-timeout /t 1 >nul
+set "frames=0"
+call :loading_glow_start
+echo.
+:loading_loop
+set /a "percent=frames*5"
+set "bar="
+for /l %%i in (1,1,%frames%) do set "bar=!bar!█"
+for /l %%i in (%frames%,1,19) do set "bar=!bar! "
+
+<nul set /p "=!CR!  %text%... [!bar!] !percent!%%"
+
+if %frames% equ 20 (
+    echo.
+    echo  [OK] COMPLETE
+    timeout /t 1 >nul
+    call :loading_complete_effect
+    goto :eof
+)
+call :loading_color_cycle
+timeout /t %ANIMATION_SPEED% >nul
 set /a frames+=1
 goto loading_loop
+
+:loading_glow_start
+echo %WHITE%
+goto :eof
+
+:loading_color_cycle
+echo %WHITE%
+goto :eof
+
+:loading_complete_effect
+echo %WHITE%
+goto :eof

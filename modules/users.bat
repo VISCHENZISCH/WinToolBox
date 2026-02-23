@@ -1,20 +1,30 @@
 @echo off
 setlocal enabledelayedexpansion
+for /f %%a in ('copy /z "%~f0" nul') do set "CR=%%a"
+:: --- ANSI Color Definitions ---
+set "ESC= "
+for /f %%A in ('echo prompt $E ^| cmd') do set "ESC=%%A"
+set "RED=%ESC%[38;2;158;34;34m"
+set "TEAL=%ESC%[38;2;2;223;164m"
+set "WHITE=%ESC%[97m"
+set "RESET=%ESC%[0m"
+
 :: =======================================
 :: Module 4 : Gestion des Utilisateurs v1.2
 :: Améliorations : Validation, sécurité, gestion d'erreurs
 :: =======================================
 
-set logfile=logs\users_report.txt
-color 0B
+cls
+echo %WHITE%
+set "logfile=logs\users_report.txt"
 
 :: Fonction de logging
 call :log_message "=== Module Utilisateurs démarré ==="
 
 cls
-echo =====================================
-echo    Module : Gestion des Utilisateurs
-echo =====================================
+call :display_module_header "Gestion des Utilisateurs" "[USR]"
+echo.
+call :loading_animation "Analyse des profils utilisateurs"
 echo.
 echo [1] Lister les utilisateurs
 echo [2] Ajouter un utilisateur
@@ -38,7 +48,7 @@ if %errorlevel% neq 0 (
 if "%option%"=="1" (
     call :list_users
 ) else if "%option%"=="2" (
-    call :add_user
+ cd /Users   call :add_user
 ) else if "%option%"=="3" (
     call :delete_user
 ) else if "%option%"=="4" (
@@ -238,3 +248,49 @@ goto :eof
 :log_message
 echo [%date% %time%] %~1 >> %logfile%
 goto :eof
+
+:display_module_header
+set "module_name=%~1"
+set "icon=%~2"
+cls
+echo %TEAL%
+echo.
+echo  ...........................................................................
+echo  :                                                                         :
+echo  :  [%icon%] %module_name% [%icon%]                                        :
+echo  :                                                                         :
+echo  :.........................................................................:
+echo %WHITE%
+goto :eof
+
+:display_step_header
+set "step=%~1"
+set "title=%~2"
+set "icon=%~3"
+echo.
+echo  ...........................................................................
+echo  :  %icon% ÉTAPE %step%: %title%
+echo  :.........................................................................:
+echo.
+goto :eof
+
+:loading_animation
+set "text=%~1"
+set "frames=0"
+echo.
+:loading_loop_users
+set /a "percent=frames*5"
+set "bar="
+set /a "bar_len=percent/5"
+for /l %%i in (1,1,!bar_len!) do set "bar=!bar!█"
+for /l %%i in (!bar_len!,1,19) do set "bar=!bar! "
+<nul set /p "=!CR!  %text%... [!bar!] !percent!%%"
+if %frames% equ 20 (
+    echo.
+    echo  [OK] COMPLETE
+    timeout /t 1 >nul
+    goto :eof
+)
+timeout /t 1 >nul
+set /a frames+=1
+goto loading_loop_users

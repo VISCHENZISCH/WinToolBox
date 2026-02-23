@@ -1,0 +1,32 @@
+# Logs et rapports
+logs/*.txt
+logs/*.log
+
+# Cache système
+cache/*.cache
+cache/*.tmp
+
+# Fichiers temporaires
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# Fichiers système Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Fichiers de développement
+*.swp
+*.swo
+*~
+
+# Fichiers de test
+test_*.bat
+debug_*.bat
+temp_*.txt
+
+# Fichiers PowerShell temporaires
+*.ps1.tmp

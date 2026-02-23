@@ -1,20 +1,29 @@
 @echo off
 setlocal enabledelayedexpansion
+for /f %%a in ('copy /z "%~f0" nul') do set "CR=%%a"
+:: --- ANSI Color Definitions ---
+set "ESC= "
+for /f %%A in ('echo prompt $E ^| cmd') do set "ESC=%%A"
+set "RED=%ESC%[38;2;158;34;34m"
+set "TEAL=%ESC%[38;2;2;223;164m"
+set "WHITE=%ESC%[97m"
+set "RESET=%ESC%[0m"
+
 :: =======================================
 :: Module 3 : Surveillance Réseau v1.2
 :: Améliorations : Tests complets, diagnostics, sécurité
 :: =======================================
 
 cls
-color 08
+echo %WHITE%
 set logfile=logs\network_report.txt
 
 :: Fonction de logging
 call :log_message "=== Module Réseau démarré ==="
 
-echo =====================================
-echo    Module : Surveillance Réseau
-echo =====================================
+call :display_module_header "Surveillance Réseau" "[NET]"
+echo.
+call :loading_animation "Analyse des interfaces réseau"
 echo.
 echo [*] Tests de connectivité et diagnostics réseau...
 echo.
@@ -137,3 +146,49 @@ goto :eof
 :log_message
 echo [%date% %time%] %~1 >> %logfile%
 goto :eof
+
+:display_module_header
+set "module_name=%~1"
+set "icon=%~2"
+cls
+echo %TEAL%
+echo.
+echo  ...........................................................................
+echo  :                                                                         :
+echo  :  [%icon%] %module_name% [%icon%]                                        :
+echo  :                                                                         :
+echo  :.........................................................................:
+echo %WHITE%
+goto :eof
+
+:display_step_header
+set "step=%~1"
+set "title=%~2"
+set "icon=%~3"
+echo.
+echo  ...........................................................................
+echo  :  %icon% ÉTAPE %step%: %title%
+echo  :.........................................................................:
+echo.
+goto :eof
+
+:loading_animation
+set "text=%~1"
+set "frames=0"
+echo.
+:loading_loop_net2
+set /a "percent=frames*5"
+set "bar="
+set /a "bar_len=percent/5"
+for /l %%i in (1,1,!bar_len!) do set "bar=!bar!█"
+for /l %%i in (!bar_len!,1,19) do set "bar=!bar! "
+<nul set /p "=!CR!  %text%... [!bar!] !percent!%%"
+if %frames% equ 20 (
+    echo.
+    echo  [OK] COMPLETE
+    timeout /t 1 >nul
+    goto :eof
+)
+timeout /t 1 >nul
+set /a frames+=1
+goto loading_loop_net2
