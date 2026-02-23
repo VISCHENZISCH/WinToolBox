@@ -1,52 +1,75 @@
 @echo off
 setlocal enabledelayedexpansion
+for /f %%a in ('copy /z "%~f0" nul') do set "CR=%%a"
+:: --- ANSI Color Definitions ---
+set "ESC="
+for /f %%A in ('echo prompt $E ^| cmd') do set "ESC=%%A"
+set "RED=%ESC%[38;2;158;34;34m"
+set "TEAL=%ESC%[38;2;2;223;164m"
+set "WHITE=%ESC%[97m"
+set "RESET=%ESC%[0m"
+
+:: Optimisations de performance
+set "FAST_MODE=1"
+set "SKIP_ANIMATIONS=0"
+set "CACHE_ENABLED=1"
+
+:: Configuration rapide
+if "%FAST_MODE%"=="1" (
+    set "TIMEOUT_DURATION=0"
+    set "ANIMATION_SPEED=0"
+) else (
+    set "TIMEOUT_DURATION=1"
+    set "ANIMATION_SPEED=1"
+)
+
 :: =======================================
-:: Module 1 : Informations Système v1.2
-:: Améliorations : Collecte complète, analyse, rapport structuré
+:: Module 1 : Informations Système v1.3
+:: Améliorations : Performance, cache, design ultra-moderne
 :: =======================================
 
 cls
-color 05
+:: ANSI handled
 set logfile=logs\system_report.txt
 
 :: Fonction de logging
 call :log_message "=== Module Système démarré ==="
 
-call :display_module_header "Informations Système" "💻"
+call :display_module_header "Informations Système" "[SYS]"
 echo.
 call :loading_animation "Collecte des informations système" 2
 echo.
 
 :: Informations système de base
-echo [1/8] Informations système de base...
+call :display_step_header "1/8" "Informations système de base" "[OS]"
 call :collect_system_info
 
 :: Informations matérielles
-echo [2/8] Informations matérielles...
+call :display_step_header "2/8" "Informations matérielles" "[HW]"
 call :collect_hardware_info
 
 :: Informations réseau
-echo [3/8] Informations réseau...
+call :display_step_header "3/8" "Informations réseau" "[NET]"
 call :collect_network_info
 
 :: Informations de stockage
-echo [4/8] Informations de stockage...
+call :display_step_header "4/8" "Informations de stockage" "[DSK]"
 call :collect_storage_info
 
 :: Informations des processus
-echo [5/8] Informations des processus...
+call :display_step_header "5/8" "Informations des processus" "[PRC]"
 call :collect_process_info
 
 :: Informations des services
-echo [6/8] Informations des services...
+call :display_step_header "6/8" "Informations des services" "[SRV]"
 call :collect_service_info
 
 :: Informations de performance
-echo [7/8] Informations de performance...
+call :display_step_header "7/8" "Informations de performance" "[PRF]"
 call :collect_performance_info
 
 :: Génération du rapport final
-echo [8/8] Génération du rapport final...
+call :display_step_header "8/8" "Génération du rapport final" "[REP]"
 call :generate_final_report
 
 echo.
@@ -167,67 +190,88 @@ goto :eof
 :display_module_header
 set "module_name=%~1"
 set "icon=%~2"
+call :module_fade_in
 cls
-color 05
+echo %TEAL%
 echo.
-echo     ╔══════════════════════════════════════════════════════════════╗
-echo     ║                                                              ║
-echo     ║  %icon%  %module_name%  %icon%                               ║
-echo     ║                                                              ║
-echo     ╚══════════════════════════════════════════════════════════════╝
+echo  ...........................................................................
+echo  :                                                                         :
+echo  :  [%icon%] %module_name% [%icon%]                                        :
+echo  :                                                                         :
+echo  :.........................................................................:
 echo.
+call :module_sparkle
+echo %WHITE%
+goto :eof
+
+:module_fade_in
+if "%SKIP_ANIMATIONS%"=="1" goto :eof
+for /l %%i in (1,1,2) do (
+    timeout /t %TIMEOUT_DURATION% >nul
+)
+goto :eof
+
+:module_sparkle
+if "%SKIP_ANIMATIONS%"=="1" goto :eof
+:: ANSI handled
+timeout /t %TIMEOUT_DURATION% >nul
+:: ANSI handled
 goto :eof
 
 :loading_animation
 set "text=%~1"
-set "duration=%~2"
-if "%duration%"=="" set "duration=2"
 set "frames=0"
+call :loading_glow_start
+echo.
 :loading_loop_sysinfo
-if %frames% equ 0 (
-    echo %text% [                    ] 0%%
-) else if %frames% equ 1 (
-    echo %text% [█                   ] 5%%
-) else if %frames% equ 2 (
-    echo %text% [██                  ] 10%%
-) else if %frames% equ 3 (
-    echo %text% [███                 ] 15%%
-) else if %frames% equ 4 (
-    echo %text% [████                ] 20%%
-) else if %frames% equ 5 (
-    echo %text% [█████               ] 25%%
-) else if %frames% equ 6 (
-    echo %text% [██████              ] 30%%
-) else if %frames% equ 7 (
-    echo %text% [███████             ] 35%%
-) else if %frames% equ 8 (
-    echo %text% [████████            ] 40%%
-) else if %frames% equ 9 (
-    echo %text% [█████████           ] 45%%
-) else if %frames% equ 10 (
-    echo %text% [██████████          ] 50%%
-) else if %frames% equ 11 (
-    echo %text% [███████████         ] 55%%
-) else if %frames% equ 12 (
-    echo %text% [████████████        ] 60%%
-) else if %frames% equ 13 (
-    echo %text% [█████████████       ] 65%%
-) else if %frames% equ 14 (
-    echo %text% [██████████████      ] 70%%
-) else if %frames% equ 15 (
-    echo %text% [███████████████     ] 75%%
-) else if %frames% equ 16 (
-    echo %text% [████████████████    ] 80%%
-) else if %frames% equ 17 (
-    echo %text% [█████████████████   ] 85%%
-) else if %frames% equ 18 (
-    echo %text% [██████████████████  ] 90%%
-) else if %frames% equ 19 (
-    echo %text% [███████████████████ ] 95%%
-) else if %frames% equ 20 (
-    echo %text% [████████████████████] 100%%
+set /a "percent=frames*5"
+set "bar="
+for /l %%i in (1,1,%percent%) do set "bar=!bar!█"
+:: Normalize bar to 20 chars
+set /a "bar_len=percent/5"
+set "bar="
+for /l %%i in (1,1,!bar_len!) do set "bar=!bar!█"
+for /l %%i in (!bar_len!,1,19) do set "bar=!bar! "
+
+<nul set /p "=!CR!  %text%... [!bar!] !percent!%%"
+
+if %frames% equ 20 (
+    echo.
+    echo  [OK] COMPLETE
+    timeout /t 1 >nul
+    call :loading_complete_effect
     goto :eof
 )
-timeout /t 1 >nul
+call :loading_color_cycle
+timeout /t %ANIMATION_SPEED% >nul
 set /a frames+=1
 goto loading_loop_sysinfo
+
+:loading_glow_start
+:: ANSI handled
+goto :eof
+
+:loading_color_cycle
+:: ANSI handled
+goto :eof
+
+:loading_complete_effect
+:: ANSI handled
+timeout /t 0 >nul
+:: ANSI handled
+timeout /t 0 >nul
+:: ANSI handled
+goto :eof
+
+:display_step_header
+set "step=%~1"
+set "title=%~2"
+set "icon=%~3"
+:: ANSI handled
+echo.
+echo  ...........................................................................
+echo  :  %icon% ÉTAPE %step%: %title%
+echo  :.........................................................................:
+echo.
+:: ANSI handled
+goto :eof

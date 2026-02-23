@@ -1,18 +1,27 @@
 @echo off
 setlocal enabledelayedexpansion
+for /f %%a in ('copy /z "%~f0" nul') do set "CR=%%a"
+:: --- ANSI Color Definitions ---
+set "ESC= "
+for /f %%A in ('echo prompt $E ^| cmd') do set "ESC=%%A"
+set "RED=%ESC%[38;2;158;34;34m"
+set "TEAL=%ESC%[38;2;2;223;164m"
+set "WHITE=%ESC%[97m"
+set "RESET=%ESC%[0m"
+
 :: =======================================
 :: Module 2 : Nettoyage et Optimisation v1.2
 :: Améliorations : Sécurité, validation, rapport détaillé
 :: =======================================
 
 cls
-color 0A
+echo %WHITE%
 set logfile=logs\cleanup_report.txt
 
 :: Fonction de logging
 call :log_message "=== Module Nettoyage démarré ==="
 
-call :display_module_header "Nettoyage et Optimisation" 
+call :display_module_header "Nettoyage et Optimisation" "[CLN]"
 echo.
 call :loading_animation "Initialisation du nettoyage" 2
 echo.
@@ -22,27 +31,27 @@ call :get_disk_space "AVANT"
 set space_before=!disk_free!
 
 :: Nettoyage du dossier temporaire
-echo [1/6] Nettoyage du dossier temporaire...
+call :display_step_header "1/6" "Nettoyage du dossier temporaire" "[TMP]"
 call :clean_temp_folder
 
 :: Nettoyage de la corbeille
-echo [2/6] Vidage de la corbeille...
+call :display_step_header "2/6" "Vidage de la corbeille" "[BIN]"
 call :empty_recycle_bin
 
 :: Nettoyage des fichiers temporaires système
-echo [3/6] Nettoyage des fichiers temporaires système...
+call :display_step_header "3/6" "Nettoyage des fichiers temporaires système" "[SYS]"
 call :clean_system_temp
 
 :: Nettoyage des logs Windows
-echo [4/6] Nettoyage des logs Windows...
+call :display_step_header "4/6" "Nettoyage des logs Windows" "[LOG]"
 call :clean_windows_logs
 
 :: Optimisation du registre
-echo [5/6] Optimisation du registre...
+call :display_step_header "5/6" "Optimisation du registre" "[REG]"
 call :optimize_registry
 
 :: Défragmentation (si nécessaire)
-echo [6/6] Vérification de la fragmentation...
+call :display_step_header "6/6" "Vérification de la fragmentation" "[DSK]"
 call :check_fragmentation
 
 :: Calcul de l'espace libéré
@@ -154,66 +163,65 @@ goto :eof
 set "module_name=%~1"
 set "icon=%~2"
 cls
-color 0A
+echo %TEAL%
 echo.
-echo     ╔══════════════════════════════════════════════════════════════╗
-echo     ║                                                              ║
-echo     ║  %icon%  %module_name%  %icon%                               ║
-echo     ║                                                              ║
-echo     ╚══════════════════════════════════════════════════════════════╝
-echo.
+echo  ...........................................................................
+echo  :                                                                         :
+echo  :  [%icon%] %module_name% [%icon%]                                        :
+echo  :                                                                         :
+echo  :.........................................................................:
+echo %WHITE%
+goto :eof
+
+:module_fade_in
+for /l %%i in (1,1,2) do (
+    timeout /t 0 >nul
+)
+goto :eof
+
+:module_sparkle
+:: ANSI handled
+timeout /t 0 >nul
+:: ANSI handled
 goto :eof
 
 :loading_animation
 set "text=%~1"
-set "duration=%~2"
-if "%duration%"=="" set "duration=2"
 set "frames=0"
+call :loading_glow_start
+echo.
+
 :loading_loop_cleanup
-if %frames% equ 0 (
-    echo %text% [                    ] 0%%
-) else if %frames% equ 1 (
-    echo %text% [█                   ] 5%%
-) else if %frames% equ 2 (
-    echo %text% [██                  ] 10%%
-) else if %frames% equ 3 (
-    echo %text% [███                 ] 15%%
-) else if %frames% equ 4 (
-    echo %text% [████                ] 20%%
-) else if %frames% equ 5 (
-    echo %text% [█████               ] 25%%
-) else if %frames% equ 6 (
-    echo %text% [██████              ] 30%%
-) else if %frames% equ 7 (
-    echo %text% [███████             ] 35%%
-) else if %frames% equ 8 (
-    echo %text% [████████            ] 40%%
-) else if %frames% equ 9 (
-    echo %text% [█████████           ] 45%%
-) else if %frames% equ 10 (
-    echo %text% [██████████          ] 50%%
-) else if %frames% equ 11 (
-    echo %text% [███████████         ] 55%%
-) else if %frames% equ 12 (
-    echo %text% [████████████        ] 60%%
-) else if %frames% equ 13 (
-    echo %text% [█████████████       ] 65%%
-) else if %frames% equ 14 (
-    echo %text% [██████████████      ] 70%%
-) else if %frames% equ 15 (
-    echo %text% [███████████████     ] 75%%
-) else if %frames% equ 16 (
-    echo %text% [████████████████    ] 80%%
-) else if %frames% equ 17 (
-    echo %text% [█████████████████   ] 85%%
-) else if %frames% equ 18 (
-    echo %text% [██████████████████  ] 90%%
-) else if %frames% equ 19 (
-    echo %text% [███████████████████ ] 95%%
-) else if %frames% equ 20 (
-    echo %text% [████████████████████] 100%%
+set /a "percent=frames*5"
+set "bar="
+for /l %%i in (1,1,%percent%) do set "bar=!bar!█"
+:: Normalize bar to 20 chars
+set /a "bar_len=percent/5"
+set "bar="
+for /l %%i in (1,1,!bar_len!) do set "bar=!bar!█"
+for /l %%i in (!bar_len!,1,19) do set "bar=!bar! "
+
+<nul set /p "=!CR!  %text%... [!bar!] !percent!%%"
+
+if %frames% equ 20 (
+    echo.
+    echo  [OK] COMPLETE
+    timeout /t 1 >nul
     goto :eof
 )
 timeout /t 1 >nul
 set /a frames+=1
 goto loading_loop_cleanup
+
+:display_step_header
+set "step=%~1"
+set "title=%~2"
+set "icon=%~3"
+:: ANSI handled
+echo.
+echo  ...........................................................................
+echo  :  %icon% ÉTAPE %step%: %title%
+echo  :.........................................................................:
+echo.
+:: ANSI handled
+goto :eof
