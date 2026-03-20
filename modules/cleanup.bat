@@ -165,11 +165,11 @@ set "icon=%~2"
 cls
 echo %TEAL%
 echo.
-echo  ...........................................................................
-echo  :                                                                         :
-echo  :  [%icon%] %module_name% [%icon%]                                        :
-echo  :                                                                         :
-echo  :.........................................................................:
+echo  ████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░████████
+echo  ██░░░                                                                  ░░██
+echo  ██░░░  %WHITE%◈ [%icon%] %module_name% ◈ %TEAL%
+echo  ██░░░                                                                  ░░██
+echo  ████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░████████
 echo %WHITE%
 goto :eof
 
@@ -201,7 +201,7 @@ set "bar="
 for /l %%i in (1,1,!bar_len!) do set "bar=!bar!█"
 for /l %%i in (!bar_len!,1,19) do set "bar=!bar! "
 
-<nul set /p "=!CR!  %text%... [!bar!] !percent!%%"
+<nul set /p "=!ESC![1G%WHITE%  %text%... %TEAL%[!bar!]%WHITE% !percent!%%!ESC![K"
 
 if %frames% equ 20 (
     echo.
@@ -219,9 +219,9 @@ set "title=%~2"
 set "icon=%~3"
 :: ANSI handled
 echo.
-echo  ...........................................................................
-echo  :  %icon% ÉTAPE %step%: %title%
-echo  :.........................................................................:
+echo %TEAL%  ───────────────────────────────────────────────────────────────────────────
+echo %TEAL%  ⡇ %WHITE% ◉ %icon% ÉTAPE %step%: %title%                                           :
+echo %TEAL%  ───────────────────────────────────────────────────────────────────────────
 echo.
 :: ANSI handled
 goto :eof

@@ -56,15 +56,16 @@ if "%CACHE_ENABLED%"=="1" (
     )
 )
 
+if not defined BOOT_DONE (
+    call :boot_sequence
+    set "BOOT_DONE=1"
+)
+
 :menu
 cls
 call :display_logo
 call :display_header
 call :display_menu
-echo.
-echo.
-echo.
-set /p choice=
 if "%choice%"=="" set "choice=13"
 goto validate_choice
 
@@ -197,29 +198,27 @@ goto end
 cls
 echo %WHITE%
 call :display_logo
-echo  ...........................................................................
-echo  :                         [EXIT] FERMETURE DU SYSTÈME                     :   
-echo  :.........................................................................:
-echo  :                                                                         :
-echo  :  Merci d'avoir utilisé WinToolBox v2.0 by vischenzisch                  :
-echo  :                                                                         :
-echo  :.........................................................................:
+echo %TEAL% ████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░████████
+echo %TEAL% ██░░░                                                                  ░░██
+echo %TEAL% ██░░░ %RED% ⊗ FERMETURE DU SYSTÈME ⊗ %TEAL%
+echo %TEAL% ██░░░ %WHITE% Merci d'avoir utilisé WinToolBox v2.0 by vischenzisch %TEAL%
+echo %TEAL% ██░░░                                                                  ░░██
+echo %TEAL% ████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░████████
 call :loading_animation "Fermeture en cours" 3
 endlocal
 exit /b 0
 
 :display_logo
 echo.
-echo %RED%
-echo  ...........................................................................
-echo  :                                                                         :
-echo  :  WinToolBox - Security Suite v2.0                                       :
-echo  :  Professional Edition by vischenzisch                                   :
-echo  :  .....................................................................  :
-echo  :                                                                         :
-echo  :  [SYSTEM SECURE]         [! LOGS PENDING]                [ADMIN: YES]   :
-echo  :                                                                         :
-echo  :.........................................................................:
+echo %TEAL%
+echo  ████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░████████
+echo  ██░░░                                                                  ░░██
+echo  ██░░░ %WHITE% ◈ WinToolBox - Security Suite v2.0 %TEAL%
+echo  ██░░░ %WHITE% ◈ Professional Edition by vischenzisch %TEAL%
+echo  ██░░░                                                                  ░░██
+echo  ██░░░ %RED% [SYSTEM SECURE] %WHITE%         [◉ LOGS PENDING]            [ADMIN: YES] %TEAL%░░██
+echo  ██░░░                                                                  ░░██
+echo  ████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░████████
 echo %WHITE%
 goto :eof
 
@@ -241,15 +240,15 @@ goto :eof
 goto :eof
 
 :display_menu
-echo  :  ^>^>^> MODULE SELECTION ^>^>^>                                            :
-echo  :                                                                         :
-echo  %TEAL%[1] SYSTEM   [2] CLEANUP  [3] NETWORK  [4] USERS    [5] SECURITY [6] BACKUP%WHITE%
-echo  ---------------------------------------------------------------------------
-echo  [7] THREATS  [8] LOGGING  [9] AUDIT    [10] SCAN    [11] NETMON  [12] CRYPTO
-echo  ---------------------------------------------------------------------------
-echo  %TEAL%[13] UPDATE   [14] EXIT%WHITE%
+echo %TEAL% ███░░ %WHITE% ◈ MODULE SELECTION ◈
+echo %TEAL% ███░░
+echo  %WHITE%  [1] SYSTEM   [2] CLEANUP  [3] NETWORK  [4] USERS    [5] SECURITY [6] BACKUP
+echo %TEAL%  ───────────────────────────────────────────────────────────────────────────
+echo  %WHITE%  [7] THREATS  [8] LOGGING  [9] AUDIT    [10] SCAN    [11] NETMON  [12] CRYPTO
+echo %TEAL%  ───────────────────────────────────────────────────────────────────────────
+echo  %WHITE%  [13] UPDATE   [14] EXIT
 echo.
-set /p "choice=%RED%WinToolBox%RESET% %WHITE%^> ENTER CHOICE: %RESET%"
+set /p "choice=%RED%WinToolBox%RESET% %WHITE%◈ ⌅ ENTER CHOICE: %RESET%"
 goto :eof
 
 :menu_glow_effect
@@ -270,7 +269,7 @@ set "text=%~1"
 set "duration=%~2"
 if "%duration%"=="" set "duration=3"
 if "%SKIP_ANIMATIONS%"=="1" (
-    echo  [:.........................................................................:]
+    echo    
     echo  :  %text%... [████████████████████████████████████████] 100%% [OK]  :
     echo  :.........................................................................:
     goto :eof
@@ -284,7 +283,7 @@ set "bar="
 for /l %%i in (1,1,%frames%) do set "bar=!bar!█"
 for /l %%i in (%frames%,1,19) do set "bar=!bar! "
 
-<nul set /p "=!CR!  %text%... [!bar!] !percent!%%"
+<nul set /p "=!ESC![1G%WHITE%  %text%... %TEAL%[!bar!]%WHITE% !percent!%%!ESC![K"
 
 if %frames% equ 20 (
     echo.
@@ -303,9 +302,38 @@ echo %WHITE%
 goto :eof
 
 :loading_color_cycle
-echo %WHITE%
+<nul set /p "=%WHITE%"
 goto :eof
 
 :loading_complete_effect
 echo %WHITE%
+goto :eof
+
+:boot_sequence
+if "%SKIP_ANIMATIONS%"=="1" goto :eof
+cls
+echo.
+echo %TEAL% ░░░ %WHITE% Booting WinToolBox Core Engine...
+echo %TEAL%  ───────────────────────────────────────────────────────────────────────────
+call :boot_step "Loading core kernel modules"
+call :boot_step "Mounting virtual file systems"
+call :boot_step "Initializing Security Suite v2.0"
+call :boot_step "Establishing secure connection channels"
+call :boot_step "Service System Info"
+call :boot_step "Service Cleanup & Optimization"
+call :boot_step "Service Network Diagnostics"
+call :boot_step "Service Threat Detection Engine"
+call :boot_step "Service Vulnerability Scanner"
+call :boot_step "Service Encryption Protocols"
+call :boot_step "Verifying system integrity"
+call :boot_step "Loading user interface components"
+echo %TEAL%  ───────────────────────────────────────────────────────────────────────────
+echo %TEAL% ░░░ %WHITE% System successfully initialized. Welcome, Administrator.
+timeout /t 2 >nul
+goto :eof
+
+:boot_step
+set "msg=%~1"
+echo %WHITE% ║ [ %TEAL%ok%WHITE% ] %msg%.
+for /l %%k in (1,1,300) do rem
 goto :eof
