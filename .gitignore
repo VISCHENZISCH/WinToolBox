@@ -23,6 +23,7 @@ $RECYCLE.BIN/
 *.swo
 *~
 *.py
+test_output.txt
 # Fichiers de test
 test_*.bat
 debug_*.bat
