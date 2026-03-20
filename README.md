@@ -7,7 +7,9 @@
 ## Security Suite v2.0 - Professional Edition by vischenzisch
 
 ### Description
-WinToolBox est une suite d'outils d'administration Windows développée entièrement en **Batch (Shell Windows)**.  
+WinToolBox est une suite d'outils d'administration Windows développée entièrement en *
+
+*Batch (Shell Windows)**.  
 Elle permet de réaliser des opérations de maintenance, de sécurité et de gestion système depuis une interface CLI interactive avec des animations de chargement et des diagrammes ASCII.
 
 ### Architecture du système

@@ -1,0 +1,41 @@
+[97m
+[97m
+[ATTENTION] Certains modules nécessitent des privilèges administrateur.
+Vous pouvez continuer, mais certaines fonctionnalités pourraient être limitées.
+
+Appuyez sur une touche pour continuer... 
+
+[38;2;2;223;164m
+ ████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░████████
+ ██░░░                                                                  ░░██
+ ██░░░ [97m ◈ WinToolBox - Security Suite v2.0 [38;2;2;223;164m
+ ██░░░ [97m ◈ Professional Edition by vischenzisch [38;2;2;223;164m
+ ██░░░                                                                  ░░██
+ ██░░░ [38;2;158;34;34m [SYSTEM SECURE] [97m         [◉ LOGS PENDING]            [ADMIN: YES] [38;2;2;223;164m░░██
+ ██░░░                                                                  ░░██
+ ████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░████████
+[97m
+[38;2;2;223;164m ███░░ [97m ◈ MODULE SELECTION ◈
+[38;2;2;223;164m ███░░
+ [97m  [1] SYSTEM   [2] CLEANUP  [3] NETWORK  [4] USERS    [5] SECURITY [6] BACKUP
+[38;2;2;223;164m  ───────────────────────────────────────────────────────────────────────────
+ [97m  [7] THREATS  [8] LOGGING  [9] AUDIT    [10] SCAN    [11] NETMON  [12] CRYPTO
+[38;2;2;223;164m  ───────────────────────────────────────────────────────────────────────────
+ [97m  [13] UPDATE   [14] EXIT
+
+[38;2;158;34;34mWinToolBox[0m [97m◈ ⌅ ENTER CHOICE: [0m
+ ...........................................................................
+ :  [RUN] EXÉCUTION DU MODULE: Gestion des utilisateurs
+ :.........................................................................:
+[97m
+[38;2;2;223;164m
+
+ ████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░████████
+ ██░░░                                                                  ░░██
+ ██░░░  [97m◈ [[USR]] Gestion des Utilisateurs ◈ [38;2;2;223;164m
+ ██░░░                                                                  ░░██
+ ████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░████████
+[97m
+
+
+[1G[97m  Analyse des profils utilisateurs... [38;2;2;223;164m[                    ][97m 0%[K[1G[97m  Analyse des profils utilisateurs... [38;2;2;223;164m[█                   ][97m 5%[K[1G[97m  Analyse des profils utilisateurs... [38;2;2;223;164m[██                  ][97m 10%[K[1G[97m  Analyse des profils utilisateurs... [38;2;2;223;164m[███                 ][97m 15%[K[1G[97m  Analyse des profils utilisateurs... [38;2;2;223;164m[████                ][97m 20%[K[1G[97m  Analyse des profils utilisateurs... [38;2;2;223;164m[█████               ][97m 25%[K[1G[97m  Analyse des profils utilisateurs... [38;2;2;223;164m[██████              ][97m 30%[K[1G[97m  Analyse des profils utilisateurs... [38;2;2;223;164m[███████             ][97m 35%[K[1G[97m  Analyse des profils utilisateurs... [38;2;2;223;164m[████████            ]

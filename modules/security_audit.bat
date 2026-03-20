@@ -9,10 +9,10 @@ set "TEAL=%ESC%[38;2;2;223;164m"
 set "WHITE=%ESC%[97m"
 set "RESET=%ESC%[0m"
 
-:: =======================================
-:: Module : Audit de Sécurité Avancé v2.0
+
+:: Module : Audit de Sécurité 
 :: Fonctionnalités : Analyse complète, détection de menaces
-:: =======================================
+
 
 cls
 echo %WHITE%
@@ -88,9 +88,9 @@ call :log_message "Audit de sécurité terminé - Score: !security_score!/100"
 pause
 goto :eof
 
-:: =======================================
+
 :: Fonctions d'audit de sécurité
-:: =======================================
+
 
 :check_privileges
 call :log_message "Vérification des privilèges système"
@@ -277,9 +277,9 @@ goto :eof
 call :log_message "Génération du rapport de sécurité"
 
 :: Résumé de sécurité
-echo ====================================== >> %logfile%
+echo ============================================ >> %logfile%
 echo RAPPORT DE SÉCURITÉ >> %logfile%
-echo ====================================== >> %logfile%
+echo ============================================ >> %logfile%
 echo Date de génération : %date% %time% >> %logfile%
 echo Nom de l'ordinateur : %computername% >> %logfile%
 echo Utilisateur : %username% >> %logfile%
@@ -298,11 +298,11 @@ set "icon=%~2"
 cls
 echo %TEAL%
 echo.
-echo  ...........................................................................
-echo  :                                                                         :
-echo  :  [%icon%] %module_name% [%icon%]                                        :
-echo  :                                                                         :
-echo  :.........................................................................:
+echo  ████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░████████
+echo  ██░░░                                                                  ░░██
+echo  ██░░░  %WHITE%◈ [%icon%] %module_name% ◈ %TEAL%
+echo  ██░░░                                                                  ░░██
+echo  ████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░████████
 echo %WHITE%
 goto :eof
 
@@ -311,10 +311,10 @@ set "step=%~1"
 set "title=%~2"
 set "icon=%~3"
 echo.
-echo  ...........................................................................
-echo  :  %icon% ÉTAPE %step%: %title%
-echo  :.........................................................................:
-echo.
+echo %TEAL%  ───────────────────────────────────────────────────────────────────────────
+echo %TEAL%  ⡇ %WHITE% ◉ ÉTAPE %step%: %title%
+echo %TEAL%  ───────────────────────────────────────────────────────────────────────────
+echo %WHITE%
 goto :eof
 
 :loading_animation
@@ -327,7 +327,7 @@ set "bar="
 set /a "bar_len=percent/5"
 for /l %%i in (1,1,!bar_len!) do set "bar=!bar!█"
 for /l %%i in (!bar_len!,1,19) do set "bar=!bar! "
-<nul set /p "=!CR!  %text%... [!bar!] !percent!%%"
+<nul set /p "=!ESC![1G%WHITE%  %text%... %TEAL%[!bar!]%WHITE% !percent!%%!ESC![K"
 if %frames% equ 20 (
     echo.
     echo  [OK] COMPLETE

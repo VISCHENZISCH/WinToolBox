@@ -22,7 +22,7 @@ $RECYCLE.BIN/
 *.swp
 *.swo
 *~
-
+*.py
 # Fichiers de test
 test_*.bat
 debug_*.bat

@@ -27,35 +27,35 @@ call :loading_animation "Initialisation du monitoring"
 echo.
 
 :: Surveillance des connexions
-echo [1/8] Surveillance des connexions...
+echo %WHITE% ◉ [1/8] Surveillance des connexions...
 call :monitor_connections
 
 :: Analyse du trafic réseau
-echo [2/8] Analyse du trafic réseau...
+echo %WHITE% ◉ [2/8] Analyse du trafic réseau...
 call :analyze_network_traffic
 
 :: Détection d'intrusions
-echo [3/8] Détection d'intrusions...
+echo %WHITE% ◉ [3/8] Détection d'intrusions...
 call :detect_intrusions
 
 :: Surveillance des ports
-echo [4/8] Surveillance des ports...
+echo %WHITE% ◉ [4/8] Surveillance des ports...
 call :monitor_ports
 
 :: Analyse des DNS
-echo [5/8] Analyse des DNS...
+echo %WHITE% ◉ [5/8] Analyse des DNS...
 call :analyze_dns_queries
 
 :: Vérification des certificats
-echo [6/8] Vérification des certificats...
+echo %WHITE% ◉ [6/8] Vérification des certificats...
 call :check_certificates
 
 :: Surveillance des protocoles
-echo [7/8] Surveillance des protocoles...
+echo %WHITE% ◉ [7/8] Surveillance des protocoles...
 call :monitor_protocols
 
 :: Génération du rapport réseau
-echo [8/8] Génération du rapport réseau...
+echo %WHITE% ◉ [8/8] Génération du rapport réseau...
 call :generate_network_report
 
 echo.
@@ -239,11 +239,11 @@ set "icon=%~2"
 cls
 echo %TEAL%
 echo.
-echo  ...........................................................................
-echo  :                                                                         :
-echo  :  [%icon%] %module_name% [%icon%]                                        :
-echo  :                                                                         :
-echo  :.........................................................................:
+echo  ████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░████████
+echo  ██░░░                                                                  ░░██
+echo  ██░░░  %WHITE%◈ [%icon%] %module_name% ◈ %TEAL%
+echo  ██░░░                                                                  ░░██
+echo  ████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░████████
 echo %WHITE%
 goto :eof
 
@@ -252,10 +252,10 @@ set "step=%~1"
 set "title=%~2"
 set "icon=%~3"
 echo.
-echo  ...........................................................................
-echo  :  %icon% ÉTAPE %step%: %title%
-echo  :.........................................................................:
-echo.
+echo %TEAL%  ───────────────────────────────────────────────────────────────────────────
+echo %TEAL%  ⡇ %WHITE% ◉ ÉTAPE %step%: %title%
+echo %TEAL%  ───────────────────────────────────────────────────────────────────────────
+echo %WHITE%
 goto :eof
 
 :loading_animation
@@ -268,7 +268,7 @@ set "bar="
 set /a "bar_len=percent/5"
 for /l %%i in (1,1,!bar_len!) do set "bar=!bar!█"
 for /l %%i in (!bar_len!,1,19) do set "bar=!bar! "
-<nul set /p "=!CR!  %text%... [!bar!] !percent!%%"
+<nul set /p "=!ESC![1G%WHITE%  %text%... %TEAL%[!bar!]%WHITE% !percent!%%!ESC![K"
 if %frames% equ 20 (
     echo.
     echo  [OK] COMPLETE

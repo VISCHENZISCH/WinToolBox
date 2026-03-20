@@ -27,43 +27,43 @@ call :loading_animation "Analyse des signatures de menaces"
 echo.
 
 :: Détection de malware
-echo [1/10] Détection de malware...
+echo %WHITE% ◉ [1/10] Détection de malware...
 call :detect_malware
 
 :: Analyse des processus suspects
-echo [2/10] Analyse des processus suspects...
+echo %WHITE% ◉ [2/10] Analyse des processus suspects...
 call :analyze_suspicious_processes
 
 :: Vérification des connexions réseau
-echo [3/10] Vérification des connexions réseau...
+echo %WHITE% ◉ [3/10] Vérification des connexions réseau...
 call :check_suspicious_connections
 
 :: Analyse des fichiers suspects
-echo [4/10] Analyse des fichiers suspects...
+echo %WHITE% ◉ [4/10] Analyse des fichiers suspects...
 call :analyze_suspicious_files
 
 :: Détection de rootkits
-echo [5/10] Détection de rootkits...
+echo %WHITE% ◉ [5/10] Détection de rootkits...
 call :detect_rootkits
 
 :: Vérification des services malveillants
-echo [6/10] Vérification des services malveillants...
+echo %WHITE% ◉ [6/10] Vérification des services malveillants...
 call :check_malicious_services
 
 :: Analyse des clés de registre
-echo [7/10] Analyse des clés de registre...
+echo %WHITE% ◉ [7/10] Analyse des clés de registre...
 call :analyze_registry_threats
 
 :: Détection de keyloggers
-echo [8/10] Détection de keyloggers...
+echo %WHITE% ◉ [8/10] Détection de keyloggers...
 call :detect_keyloggers
 
 :: Vérification des DLL malveillantes
-echo [9/10] Vérification des DLL malveillantes...
+echo %WHITE% ◉ [9/10] Vérification des DLL malveillantes...
 call :check_malicious_dlls
 
 :: Génération du rapport de menaces
-echo [10/10] Génération du rapport de menaces...
+echo %WHITE% ◉ [10/10] Génération du rapport de menaces...
 call :generate_threat_report
 
 echo.
@@ -278,11 +278,11 @@ set "icon=%~2"
 cls
 echo %TEAL%
 echo.
-echo  ...........................................................................
-echo  :                                                                         :
-echo  :  [%icon%] %module_name% [%icon%]                                        :
-echo  :                                                                         :
-echo  :.........................................................................:
+echo  ████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░████████
+echo  ██░░░                                                                  ░░██
+echo  ██░░░  %WHITE%◈ [%icon%] %module_name% ◈ %TEAL%
+echo  ██░░░                                                                  ░░██
+echo  ████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░████████
 echo %WHITE%
 goto :eof
 
@@ -291,10 +291,10 @@ set "step=%~1"
 set "title=%~2"
 set "icon=%~3"
 echo.
-echo  ...........................................................................
-echo  :  %icon% ÉTAPE %step%: %title%
-echo  :.........................................................................:
-echo.
+echo %TEAL%  ───────────────────────────────────────────────────────────────────────────
+echo %TEAL%  ⡇ %WHITE% ◉ ÉTAPE %step%: %title%
+echo %TEAL%  ───────────────────────────────────────────────────────────────────────────
+echo %WHITE%
 goto :eof
 
 :loading_animation
@@ -307,7 +307,7 @@ set "bar="
 set /a "bar_len=percent/5"
 for /l %%i in (1,1,!bar_len!) do set "bar=!bar!█"
 for /l %%i in (!bar_len!,1,19) do set "bar=!bar! "
-<nul set /p "=!CR!  %text%... [!bar!] !percent!%%"
+<nul set /p "=!ESC![1G%WHITE%  %text%... %TEAL%[!bar!]%WHITE% !percent!%%!ESC![K"
 if %frames% equ 20 (
     echo.
     echo  [OK] COMPLETE
