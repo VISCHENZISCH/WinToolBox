@@ -1,2 +1,0 @@
-[26/02/2026  9:13:08,85] === Module Réseau démarré === 
-[26/02/2026  9:13:29,18] Test de connectivité Internet 

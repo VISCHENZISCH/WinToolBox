@@ -1,5 +1,0 @@
-[25/02/2026 18:00:52,64] === Module Utilisateurs démarré === 
-[25/02/2026 18:01:34,85] ERREUR: Option invalide sélectionnée: 1 
-[25/02/2026 18:02:00,99] === Module Utilisateurs démarré === 
-[25/02/2026 18:02:27,23] ERREUR: Option invalide sélectionnée: 1 
-[20/03/2026 17:57:37,54] === Module Utilisateurs démarré === 
