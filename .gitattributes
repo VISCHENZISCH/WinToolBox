@@ -1,4 +1,4 @@
-# Fins de ligne Windows : cmd.exe en a besoin pour resoudre les labels
+# Windows line endings: cmd.exe needs them to resolve labels
 *.bat text eol=crlf
 *.cmd text eol=crlf
 *.ps1 text eol=crlf

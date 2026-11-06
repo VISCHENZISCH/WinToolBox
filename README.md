@@ -1,91 +1,90 @@
 # WinToolBox
 
-Boite a outils Windows en ligne de commande : sauvegarde versionnee, disques et partitions,
-nettoyage, reparation, reseau, comptes locaux et audit de securite.
+Command-line toolbox for Windows: versioned backup, disks and partitions, cleanup, repair,
+networking, local accounts and security audit.
 
-Elle n'utilise que des composants fournis avec Windows et ne demande aucune installation.
+It only uses components that ship with Windows and requires no installation.
 
-## Prerequis
+## Requirements
 
-- Windows 10 ou 11, avec Windows PowerShell 5.1 (inclus dans Windows)
-- Droits administrateur pour les disques, les images systeme et les taches planifiees
+- Windows 10 or 11, with Windows PowerShell 5.1 (included in Windows)
+- Administrator rights for disks, system images and scheduled tasks
 
-## Lancement
+## Getting started
 
-Double-cliquez sur `WintoolBox.bat`. Sans droits administrateur, l'outil propose de se relancer
-avec ces droits. Les actions qui les exigent sont signalees dans les menus.
+Double-click `WintoolBox.bat`. Without administrator rights, the tool offers to restart with
+those rights. Actions that require them are flagged in the menus.
 
 ## Menu
 
-| Section | Choix | Fonctions |
+| Section | Option | Features |
 |---|---|---|
-| Donnees | 1. Sauvegarde et restauration | Sauvegardes completes et incrementales, verification, restauration, taches planifiees, image systeme, point de restauration |
-| Donnees | 2. Disques et partitions | Vue d'ensemble, sante, analyse, optimisation, creation, redimensionnement, lettre, formatage, suppression |
-| Entretien | 3. Nettoyage et reparation | Nettoyage apres analyse, DISM, SFC |
-| Administration | 4. Informations systeme | Materiel, processus, demarrage, services en echec |
-| Administration | 5. Reseau | Interfaces, test de connexion, ports en ecoute, connexions en direct, cache DNS |
-| Administration | 6. Utilisateurs et groupes | Comptes et membres des groupes locaux |
-| Protection | 7. Securite et journaux | Audit en lecture seule, journal de l'outil |
+| Data | 1. Backup and restore | Full and incremental backups, verification, restore, scheduled tasks, system image, restore point |
+| Data | 2. Disks and partitions | Overview, health, scan, optimization, creation, resizing, drive letter, formatting, deletion |
+| Maintenance | 3. Cleanup and repair | Cleanup after a scan, DISM, SFC |
+| Administration | 4. System information | Hardware, processes, startup, failed services |
+| Administration | 5. Network | Interfaces, connection test, listening ports, live connections, DNS cache |
+| Administration | 6. Users and groups | Local accounts and group members |
+| Protection | 7. Security and logs | Read-only audit, tool log |
 
-## Sauvegardes
+## Backups
 
-Chaque source a son propre dossier dans la destination :
+Each source has its own folder in the destination:
 
 ```text
-<destination>\<nom>-<empreinte>\
-    20260115-200000123-full\   version complete
-        data\                  fichiers copies
-        files.tsv              etat de la source, empreintes SHA-256
-        dirs.txt               dossiers, y compris vides
-        errors.txt             fichiers et dossiers non sauvegardes
-        meta.json              resume de la version
-    20260116-200000456-incr\   ne contient que les fichiers modifies
+<destination>\<name>-<hash>\
+    20260115-200000123-full\   full version
+        data\                  copied files
+        files.tsv              source state, SHA-256 hashes
+        dirs.txt               folders, including empty ones
+        errors.txt             files and folders not backed up
+        meta.json              version summary
+    20260116-200000456-incr\   contains only the changed files
 ```
 
-- **Restauration :** chaque version peut etre restauree directement, en entier ou avec un filtre.
-- **Integrite :** les copies sont controlees par empreinte SHA-256, puis les fichiers restaures aussi.
-- **Interruption :** une version inachevee n'est jamais prise en compte et son dossier temporaire est supprime au lancement suivant.
-- **Dependances :** une version incrementale a besoin des versions de sa chaine. Supprimez les anciennes versions avec le menu, jamais a la main.
-- **Fichiers ouverts :** l'option VSS les copie, avec les droits administrateur.
-- **Liens :** les jonctions et les liens symboliques sont ignores et comptes dans le resultat.
+- **Restore:** every version can be restored directly, entirely or with a filter.
+- **Integrity:** copies are checked using SHA-256 hashes, and so are restored files.
+- **Interruption:** an unfinished version is never taken into account and its temporary folder is deleted on the next run.
+- **Dependencies:** an incremental version needs the versions in its chain. Delete old versions using the menu, never by hand.
+- **Open files:** the VSS option copies them, with administrator rights.
+- **Links:** junctions and symbolic links are skipped and counted in the result.
 
-### Taches planifiees
+### Scheduled tasks
 
-Une tache s'execute avec les droits limites du compte courant, y compris s'il n'a pas ouvert de
-session. Elle lui donne acces a ses fichiers et aux disques locaux ou externes, mais pas aux
-partages reseau ni aux fichiers ouverts (VSS). Par defaut, elle fait une sauvegarde complete toutes
-les 7 executions et conserve 4 chaines.
+A task runs with the limited rights of the current account, even when that account is not logged
+on. This gives it access to the account's files and to local or external drives, but not to network
+shares or open files (VSS). By default, it makes a full backup every 7 runs and keeps 4 chains.
 
-La sauvegarde peut aussi etre lancee en ligne de commande :
+Backups can also be started from the command line:
 
 ```bat
-WintoolBox.bat -Task Backup -Source "D:\Documents" -Destination "E:\Sauvegardes" -Mode Incremental -FullEvery 7 -KeepChains 4
+WintoolBox.bat -Task Backup -Source "D:\Documents" -Destination "E:\Backups" -Mode Incremental -FullEvery 7 -KeepChains 4
 ```
 
-Codes de sortie : `0` succes, `1` echec, `2` sauvegarde partielle.
+Exit codes: `0` success, `1` failure, `2` partial backup.
 
-## Securite d'utilisation
+## Safe use
 
-- Le formatage et la suppression exigent de retaper une phrase exacte. Ils sont refuses sur les partitions systeme et de demarrage.
-- Le nettoyage indique d'abord ce qu'il peut supprimer et ne touche jamais aux journaux Windows.
-- Le lanceur utilise `-ExecutionPolicy Bypass` pour ce seul processus, sans modifier la configuration de la machine.
-- Les journaux (`logs\`) et les rapports (`reports\`) decrivent la machine. Ne les publiez pas.
+- Formatting and deleting require typing an exact phrase. They are refused on system and boot partitions.
+- Cleanup first shows what it can delete and never touches Windows logs.
+- The launcher uses `-ExecutionPolicy Bypass` for this process only, without changing the machine configuration.
+- Logs (`logs\`) and reports (`reports\`) describe the machine. Do not publish them.
 
-## Limites
+## Limitations
 
-WinToolBox n'est pas un equivalent complet d'AOMEI Backupper ou d'EaseUS Todo Backup. Il ne propose pas :
+WinToolBox is not a full equivalent of AOMEI Backupper or EaseUS Todo Backup. It does not offer:
 
-- le clonage de disque secteur par secteur ;
-- de media de demarrage pour restaurer un systeme qui ne demarre plus ;
-- la recuperation de partitions ou de fichiers supprimes ;
-- la conversion MBR/GPT, ni le deplacement de partitions ;
-- la compression ou le chiffrement des sauvegardes de fichiers.
+- sector-by-sector disk cloning;
+- boot media for restoring a system that no longer starts;
+- recovery of deleted partitions or files;
+- MBR/GPT conversion or moving partitions;
+- compression or encryption of file backups.
 
-L'image systeme repose sur `wbadmin` et se restaure depuis l'environnement de recuperation de Windows.
+The system image relies on `wbadmin` and is restored from the Windows Recovery Environment.
 
 ## Tests
 
-Sous Windows, dans PowerShell :
+On Windows, in PowerShell:
 
 ```powershell
 Install-Module Pester -MinimumVersion 5.0 -Scope CurrentUser -Force -SkipPublisherCheck
@@ -95,9 +94,9 @@ Invoke-Pester .\tests
 ## Structure
 
 ```text
-WintoolBox.bat          lanceur
-src\WinToolBox.ps1      point d'entree et menu principal
-src\lib\Common.ps1      journal, affichage, saisies, parcours de fichiers
-src\modules\*.ps1       un fichier par domaine
-tests\                  tests Pester
+WintoolBox.bat          launcher
+src\WinToolBox.ps1      entry point and main menu
+src\lib\Common.ps1      logging, display, input, file traversal
+src\modules\*.ps1       one file per area
+tests\                  Pester tests
 ```

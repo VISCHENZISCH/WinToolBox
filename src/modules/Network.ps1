@@ -1,10 +1,10 @@
-# Diagnostic reseau : les cmdlets renvoient des objets, independants de la langue de Windows.
+# Network diagnostics: cmdlets return objects, independent of the Windows language.
 
 function Get-SensitivePortLabel {
     param([Parameter(Mandatory)][int]$Port)
     $labels = @{
         21 = 'FTP'; 23 = 'Telnet'; 135 = 'RPC'; 139 = 'NetBIOS'; 445 = 'SMB'
-        3389 = 'Bureau a distance'; 5900 = 'VNC'; 5985 = 'WinRM'; 5986 = 'WinRM'
+        3389 = 'Remote Desktop'; 5900 = 'VNC'; 5985 = 'WinRM'; 5986 = 'WinRM'
     }
     return $labels[$Port]
 }
@@ -31,32 +31,32 @@ function Show-NetworkInterfaces {
         [pscustomobject]@{
             Interface  = $_.InterfaceAlias
             IPv4       = @($_.IPv4Address | ForEach-Object { $_.IPAddress }) -join ', '
-            Passerelle = @($_.IPv4DefaultGateway | ForEach-Object { $_.NextHop }) -join ', '
+            Gateway    = @($_.IPv4DefaultGateway | ForEach-Object { $_.NextHop }) -join ', '
             DNS        = @($_.DNSServer | Where-Object { $_.AddressFamily -eq 2 } | ForEach-Object { $_.ServerAddresses }) -join ', '
         }
     } | Format-Table -AutoSize | Out-Host
     Get-NetAdapter | Select-Object Name, Status, LinkSpeed, MacAddress | Format-Table -AutoSize | Out-Host
 }
 
-# Un test TCP, car beaucoup de reseaux bloquent le ping sans bloquer Internet.
+# A TCP test, because many networks block ping without blocking the Internet.
 function Show-Connectivity {
     $gateway = (Get-NetIPConfiguration | ForEach-Object { $_.IPv4DefaultGateway } | Where-Object { $_ } | Select-Object -First 1).NextHop
     if ($gateway) {
         $reachable = Test-Connection -ComputerName $gateway -Count 1 -Quiet
-        if ($reachable) { Write-Status OK "Passerelle $gateway joignable." }
-        else { Write-Status WARN "Passerelle $gateway muette au ping (certains routeurs ne repondent pas)." }
+        if ($reachable) { Write-Status OK "Gateway $gateway reachable." }
+        else { Write-Status WARN "Gateway $gateway did not answer ping (some routers do not respond)." }
     }
-    else { Write-Status FAIL 'Aucune passerelle par defaut.' }
+    else { Write-Status FAIL 'No default gateway.' }
 
     try {
         [void][Net.Dns]::GetHostAddresses('www.microsoft.com')
-        Write-Status OK 'Resolution DNS fonctionnelle.'
+        Write-Status OK 'DNS resolution works.'
     }
-    catch { Write-Status FAIL 'Resolution DNS en echec.' }
+    catch { Write-Status FAIL 'DNS resolution failed.' }
 
-    if (Test-TcpPort -HostName 'www.microsoft.com' -Port 443) { Write-Status OK 'Internet joignable (HTTPS).' }
-    elseif (Test-TcpPort -HostName '1.1.1.1' -Port 443) { Write-Status WARN 'Internet joignable par IP uniquement : verifiez le DNS.' }
-    else { Write-Status FAIL 'Internet injoignable.' }
+    if (Test-TcpPort -HostName 'www.microsoft.com' -Port 443) { Write-Status OK 'Internet reachable (HTTPS).' }
+    elseif (Test-TcpPort -HostName '1.1.1.1' -Port 443) { Write-Status WARN 'Internet reachable by IP only: check DNS.' }
+    else { Write-Status FAIL 'Internet unreachable.' }
 }
 
 function Show-ListeningPorts {
@@ -66,22 +66,22 @@ function Show-ListeningPorts {
         $label = Get-SensitivePortLabel -Port $_.LocalPort
         [pscustomobject]@{
             Port      = $_.LocalPort
-            Adresse   = $_.LocalAddress
-            Processus = $processes[[int]$_.OwningProcess]
-            Alerte    = if ($label -and $exposed) { "SENSIBLE : $label" } else { '' }
+            Address   = $_.LocalAddress
+            Process   = $processes[[int]$_.OwningProcess]
+            Alert     = if ($label -and $exposed) { "SENSITIVE: $label" } else { '' }
         }
     } | Format-Table -AutoSize | Out-Host
 }
 
 function Show-LiveConnections {
-    Write-Status INFO 'Actualisation toutes les 2 secondes.'
+    Write-Status INFO 'Refreshing every 2 seconds.'
     while ($true) {
         $processes = Get-ProcessNameMap
         Clear-Host
-        Write-Title 'Connexions actives (Q pour revenir)'
+        Write-Title 'Active connections (Q to go back)'
         Get-NetTCPConnection -State Established | Where-Object { $_.RemoteAddress -notin '127.0.0.1', '::1' } |
-            Select-Object @{ n = 'Processus'; e = { $processes[[int]$_.OwningProcess] } }, LocalPort, RemoteAddress, RemotePort |
-            Sort-Object Processus | Format-Table -AutoSize | Out-Host
+            Select-Object @{ n = 'Process'; e = { $processes[[int]$_.OwningProcess] } }, LocalPort, RemoteAddress, RemotePort |
+            Sort-Object Process | Format-Table -AutoSize | Out-Host
         $deadline = (Get-Date).AddSeconds(2)
         while ((Get-Date) -lt $deadline) {
             if ([Console]::KeyAvailable -and [Console]::ReadKey($true).Key -eq 'Q') { return }
@@ -92,16 +92,16 @@ function Show-LiveConnections {
 
 function Invoke-DnsFlush {
     Clear-DnsClientCache
-    Write-Log -Message 'Cache DNS vide.'
-    Write-Status OK 'Cache DNS vide.'
+    Write-Log -Message 'DNS cache flushed.'
+    Write-Status OK 'DNS cache flushed.'
 }
 
 function Show-NetworkMenu {
-    Show-Menu -Title 'Reseau' -Items @(
-        @{ Section = 'DIAGNOSTIC'; Key = '1'; Label = 'Interfaces et adresses'; Action = { Show-NetworkInterfaces } }
-        @{ Section = 'DIAGNOSTIC'; Key = '2'; Label = 'Tester la connexion'; Action = { Show-Connectivity } }
-        @{ Section = 'SURVEILLANCE'; Key = '3'; Label = 'Ports en ecoute'; Action = { Show-ListeningPorts } }
-        @{ Section = 'SURVEILLANCE'; Key = '4'; Label = 'Connexions en direct'; Submenu = $true; Action = { Show-LiveConnections } }
-        @{ Section = 'ACTIONS'; Key = '5'; Label = 'Vider le cache DNS'; Admin = $true; Action = { Invoke-DnsFlush } }
+    Show-Menu -Title 'Network' -Items @(
+        @{ Section = 'DIAGNOSTICS'; Key = '1'; Label = 'Interfaces and addresses'; Action = { Show-NetworkInterfaces } }
+        @{ Section = 'DIAGNOSTICS'; Key = '2'; Label = 'Test the connection'; Action = { Show-Connectivity } }
+        @{ Section = 'MONITORING'; Key = '3'; Label = 'Listening ports'; Action = { Show-ListeningPorts } }
+        @{ Section = 'MONITORING'; Key = '4'; Label = 'Live connections'; Submenu = $true; Action = { Show-LiveConnections } }
+        @{ Section = 'ACTIONS'; Key = '5'; Label = 'Flush the DNS cache'; Admin = $true; Action = { Invoke-DnsFlush } }
     )
 }

@@ -1,5 +1,5 @@
-# Tests Pester 5. La sauvegarde utilise le vrai robocopy : ces tests se lancent sous Windows.
-# Les fonctions sans dependance systeme s'executent aussi sur d'autres plateformes.
+# Pester 5 tests. The backup uses the real robocopy, so these tests run on Windows.
+# Functions with no system dependency also run on other platforms.
 
 BeforeAll {
     $src = [IO.Path]::GetFullPath([IO.Path]::Combine($PSScriptRoot, '..', 'src'))
@@ -18,19 +18,19 @@ BeforeAll {
 }
 
 Describe 'Format-Bytes' {
-    It 'choisit la bonne unite' {
-        Format-Bytes 512 | Should -Be '512 o'
-        (Format-Bytes 1536) -replace ',', '.' | Should -Be '1.5 Ko'
-        (Format-Bytes (2 * 1GB)) -replace ',', '.' | Should -Be '2.0 Go'
+    It 'picks the right unit' {
+        Format-Bytes 512 | Should -Be '512 B'
+        (Format-Bytes 1536) -replace ',', '.' | Should -Be '1.5 KB'
+        (Format-Bytes (2 * 1GB)) -replace ',', '.' | Should -Be '2.0 GB'
     }
 }
 
 Describe 'ConvertTo-BytesFromGb' {
-    It 'accepte la virgule et le point' {
+    It 'accepts both comma and dot' {
         ConvertTo-BytesFromGb '1,5' | Should -Be ([long](1.5 * 1GB))
         ConvertTo-BytesFromGb '2.0' | Should -Be ([long](2 * 1GB))
     }
-    It 'refuse les valeurs invalides' {
+    It 'rejects invalid values' {
         ConvertTo-BytesFromGb 'abc' | Should -BeNullOrEmpty
         ConvertTo-BytesFromGb '-3' | Should -BeNullOrEmpty
         ConvertTo-BytesFromGb '' | Should -BeNullOrEmpty
@@ -38,74 +38,74 @@ Describe 'ConvertTo-BytesFromGb' {
 }
 
 Describe 'Test-PathInside' {
-    It 'detecte une imbrication sans confondre les prefixes' {
+    It 'detects nesting without confusing prefixes' {
         Test-PathInside -Child 'C:\Data\Sub' -Parent 'C:\Data' | Should -BeTrue
         Test-PathInside -Child 'C:\Data' -Parent 'C:\Data' | Should -BeTrue
         Test-PathInside -Child 'C:\Database' -Parent 'C:\Data' | Should -BeFalse
     }
 }
 
-Describe 'Confirmations' {
-    It 'Confirm-Phrase exige la phrase exacte' {
-        Mock Read-Host { 'formater e' }
-        Confirm-Phrase -Message 'x' -Phrase 'FORMATER E' | Should -BeFalse
-        Mock Read-Host { 'FORMATER E' }
-        Confirm-Phrase -Message 'x' -Phrase 'FORMATER E' | Should -BeTrue
+Describe 'Confirmation prompts' {
+    It 'Confirm-Phrase requires the exact phrase' {
+        Mock Read-Host { 'format e' }
+        Confirm-Phrase -Message 'x' -Phrase 'FORMAT E' | Should -BeFalse
+        Mock Read-Host { 'FORMAT E' }
+        Confirm-Phrase -Message 'x' -Phrase 'FORMAT E' | Should -BeTrue
     }
-    It 'Confirm-Action refuse tout sauf O' {
+    It 'Confirm-Action rejects everything except Y' {
         Mock Read-Host { '' }
         Confirm-Action 'x' | Should -BeFalse
-        Mock Read-Host { 'o' }
+        Mock Read-Host { 'y' }
         Confirm-Action 'x' | Should -BeTrue
     }
 }
 
-Describe 'Protection des partitions' {
-    It 'protege les partitions de demarrage, systeme et le lecteur Windows' {
+Describe 'Partition protection' {
+    It 'protects boot and system partitions and the Windows drive' {
         Test-PartitionProtected -Partition ([pscustomobject]@{ IsBoot = $true; IsSystem = $false; DriveLetter = 'D' }) -SystemDrive 'C:' | Should -BeTrue
         Test-PartitionProtected -Partition ([pscustomobject]@{ IsBoot = $false; IsSystem = $true; DriveLetter = [char]0 }) -SystemDrive 'C:' | Should -BeTrue
         Test-PartitionProtected -Partition ([pscustomobject]@{ IsBoot = $false; IsSystem = $false; DriveLetter = 'C' }) -SystemDrive 'C:' | Should -BeTrue
     }
-    It 'autorise une partition de donnees' {
+    It 'allows a data partition' {
         Test-PartitionProtected -Partition ([pscustomobject]@{ IsBoot = $false; IsSystem = $false; DriveLetter = 'E' }) -SystemDrive 'C:' | Should -BeFalse
     }
-    It 'normalise les lettres de lecteur' {
+    It 'normalizes drive letters' {
         ConvertTo-DriveLetter 'e:' | Should -Be 'E'
         ConvertTo-DriveLetter 'E:\' | Should -Be 'E'
         ConvertTo-DriveLetter 'EF' | Should -BeNullOrEmpty
     }
 }
 
-Describe 'Ports sensibles' {
-    It 'compare le numero exact' {
+Describe 'Sensitive ports' {
+    It 'matches the exact number' {
         Get-SensitivePortLabel -Port 445 | Should -Be 'SMB'
         Get-SensitivePortLabel -Port 4450 | Should -BeNullOrEmpty
         Get-SensitivePortLabel -Port 2179 | Should -BeNullOrEmpty
     }
 }
 
-Describe 'Noms de comptes' {
-    It 'valide les noms' {
+Describe 'Account names' {
+    It 'validates names' {
         Test-LocalUserName 'alice' | Should -BeTrue
         Test-LocalUserName 'a"b' | Should -BeFalse
-        Test-LocalUserName 'fin.' | Should -BeFalse
+        Test-LocalUserName 'end.' | Should -BeFalse
         Test-LocalUserName ('x' * 21) | Should -BeFalse
         Test-LocalUserName '' | Should -BeFalse
     }
 }
 
-Describe 'Audit de securite' {
-    It 'ne transforme jamais une verification en echec en succes' {
-        $checks = @(@{ Name = 'Casse'; Test = { throw 'indisponible' } }, @{ Name = 'Bon'; Test = { 'OK', 'fine' } })
+Describe 'Security audit' {
+    It 'never turns a failed check into a success' {
+        $checks = @(@{ Name = 'Broken'; Test = { throw 'unavailable' } }, @{ Name = 'Good'; Test = { 'OK', 'fine' } })
         $findings = @(Invoke-SecurityAudit -Checks $checks)
         $findings[0].Status | Should -Be 'INFO'
-        $findings[0].Detail | Should -Match 'Non verifie'
+        $findings[0].Detail | Should -Match 'Not checked'
         $findings[1].Status | Should -Be 'OK'
     }
 }
 
 Describe 'Get-FileEntries' {
-    It 'liste fichiers et dossiers et applique les exclusions' {
+    It 'lists files and folders and applies exclusions' {
         $root = Join-Path $TestDrive 'scan'
         [void](Write-TestFile $root 'a.txt' 'a')
         [void](Write-TestFile $root ('sub' + [IO.Path]::DirectorySeparatorChar + 'b.txt') 'bb')
@@ -118,19 +118,19 @@ Describe 'Get-FileEntries' {
     }
 }
 
-Describe 'Nettoyage' {
-    It 'ne selectionne que les fichiers assez anciens et conformes au filtre' {
+Describe 'Cleanup' {
+    It 'selects only files that are old enough and match the filter' {
         $root = Join-Path $TestDrive 'clean'
         $old = Write-TestFile $root 'thumbcache_1.db' 'x'
         [IO.File]::SetLastWriteTimeUtc($old, [DateTime]::UtcNow.AddDays(-10))
         [void](Write-TestFile $root 'thumbcache_2.db' 'recent')
-        $oldOther = Write-TestFile $root 'autre.txt' 'x'
+        $oldOther = Write-TestFile $root 'other.txt' 'x'
         [IO.File]::SetLastWriteTimeUtc($oldOther, [DateTime]::UtcNow.AddDays(-10))
         $found = @(Get-CleanupCandidates -Root $root -MinAgeDays 1 -Filter 'thumbcache_*.db')
         $found.Count | Should -Be 1
         $found[0].Rel | Should -Be 'thumbcache_1.db'
     }
-    It 'supprime les candidats, compte l''espace et retire les dossiers vides' {
+    It 'deletes candidates, counts the space and removes empty folders' {
         $root = Join-Path $TestDrive 'clean2'
         [void](Write-TestFile $root ('d' + [IO.Path]::DirectorySeparatorChar + 'a.tmp') '12345')
         $result = Remove-CleanupCandidates -Root $root -Candidates @(Get-CleanupCandidates -Root $root)
@@ -141,11 +141,11 @@ Describe 'Nettoyage' {
     }
 }
 
-Describe 'Choix du mode de sauvegarde' {
-    It 'fait une complete sans historique' {
+Describe 'Backup mode selection' {
+    It 'runs a full backup when there is no history' {
         Resolve-BackupMode -Requested 'Incremental' -Catalog @() | Should -Be 'Full'
     }
-    It 'respecte le cycle FullEvery' {
+    It 'honors the FullEvery cycle' {
         $chain = @([pscustomobject]@{ Type = 'Full' }, [pscustomobject]@{ Type = 'Incremental' })
         Resolve-BackupMode -Requested 'Incremental' -Catalog $chain -FullEvery 3 | Should -Be 'Incremental'
         $chain += [pscustomobject]@{ Type = 'Incremental' }
@@ -153,10 +153,10 @@ Describe 'Choix du mode de sauvegarde' {
     }
 }
 
-Describe 'Manifeste' {
-    It 'relit exactement ce qu''il ecrit, y compris espaces et accents' {
+Describe 'Manifest' {
+    It 'reads back exactly what it writes, including spaces and non-ASCII characters' {
         $path = Join-Path $TestDrive 'files.tsv'
-        $name = 'dossier ' + [char]0xE9 + '\fichier (1).txt'
+        $name = 'folder ' + [char]0xE9 + '\file (1).txt'
         Write-Manifest -Path $path -Entries @([pscustomobject]@{ Size = 12; Ticks = 34; Hash = 'AB'; Store = 'id'; Rel = $name })
         $read = @(Read-Manifest -Path $path)
         $read.Count | Should -Be 1
@@ -165,21 +165,21 @@ Describe 'Manifeste' {
     }
 }
 
-Describe 'Sauvegarde et restauration' -Skip:($env:OS -ne 'Windows_NT') {
+Describe 'Backup and restore' -Skip:($env:OS -ne 'Windows_NT') {
     BeforeEach {
         $script:Source = Join-Path $TestDrive ('src-' + [guid]::NewGuid().ToString('N'))
         $script:Repo = Join-Path $TestDrive ('repo-' + [guid]::NewGuid().ToString('N'))
         [void](Write-TestFile $script:Source 'keep.txt' 'keep')
         [void](Write-TestFile $script:Source 'change.txt' 'v1')
         [void](Write-TestFile $script:Source 'sub\delete me.txt' 'delete')
-        [void][IO.Directory]::CreateDirectory((Join-Path $script:Source 'vide'))
+        [void][IO.Directory]::CreateDirectory((Join-Path $script:Source 'empty'))
     }
 
-    It 'restaure une version incrementale : fichier modifie, supprime et dossier vide' {
+    It 'restores an incremental version: changed file, deleted file and empty folder' {
         $first = New-Backup -Source $script:Source -Destination $script:Repo -Mode Full
         $first.Status | Should -Be 'Complete'
 
-        Write-TestFile $script:Source 'change.txt' 'version deux' | Out-Null
+        Write-TestFile $script:Source 'change.txt' 'version two' | Out-Null
         Remove-Item (Join-Path $script:Source 'sub\delete me.txt')
         Write-TestFile $script:Source 'new.txt' 'new' | Out-Null
         $second = New-Backup -Source $script:Source -Destination $script:Repo -Mode Incremental
@@ -189,34 +189,34 @@ Describe 'Sauvegarde et restauration' -Skip:($env:OS -ne 'Windows_NT') {
         $target = Join-Path $TestDrive 'restored'
         $result = Restore-Backup -BackupPath ([IO.Path]::Combine($second.SetPath, $second.Id)) -Target $target
         $result.Ok | Should -BeTrue
-        [IO.File]::ReadAllText((Join-Path $target 'change.txt')) | Should -Be 'version deux'
+        [IO.File]::ReadAllText((Join-Path $target 'change.txt')) | Should -Be 'version two'
         [IO.File]::ReadAllText((Join-Path $target 'keep.txt')) | Should -Be 'keep'
         [IO.File]::Exists((Join-Path $target 'new.txt')) | Should -BeTrue
         [IO.File]::Exists((Join-Path $target 'sub\delete me.txt')) | Should -BeFalse
-        [IO.Directory]::Exists((Join-Path $target 'vide')) | Should -BeTrue
+        [IO.Directory]::Exists((Join-Path $target 'empty')) | Should -BeTrue
     }
 
-    It 'peut encore restaurer la premiere version' {
+    It 'can still restore the first version' {
         $first = New-Backup -Source $script:Source -Destination $script:Repo -Mode Full
-        Write-TestFile $script:Source 'change.txt' 'version deux' | Out-Null
+        Write-TestFile $script:Source 'change.txt' 'version two' | Out-Null
         [void](New-Backup -Source $script:Source -Destination $script:Repo)
         $target = Join-Path $TestDrive 'restored-v1'
         [void](Restore-Backup -BackupPath ([IO.Path]::Combine($first.SetPath, $first.Id)) -Target $target)
         [IO.File]::ReadAllText((Join-Path $target 'change.txt')) | Should -Be 'v1'
     }
 
-    It 'ne cree pas de version quand rien ne change' {
+    It 'does not create a version when nothing changes' {
         $first = New-Backup -Source $script:Source -Destination $script:Repo
         $second = New-Backup -Source $script:Source -Destination $script:Repo
         $second.Status | Should -Be 'NoChange'
         @(Get-BackupCatalog -SetPath $first.SetPath).Count | Should -Be 1
     }
 
-    It 'detecte une copie corrompue ou manquante' {
+    It 'detects a corrupt or missing copy' {
         $backup = New-Backup -Source $script:Source -Destination $script:Repo -Mode Full
         $path = [IO.Path]::Combine($backup.SetPath, $backup.Id)
         (Test-Backup -BackupPath $path).Ok | Should -BeTrue
-        [IO.File]::WriteAllText([IO.Path]::Combine($path, 'data', 'keep.txt'), 'altere')
+        [IO.File]::WriteAllText([IO.Path]::Combine($path, 'data', 'keep.txt'), 'tampered')
         Remove-Item ([IO.Path]::Combine($path, 'data', 'change.txt'))
         $check = Test-Backup -BackupPath $path
         $check.Ok | Should -BeFalse
@@ -224,11 +224,11 @@ Describe 'Sauvegarde et restauration' -Skip:($env:OS -ne 'Windows_NT') {
         $check.Missing | Should -Contain 'change.txt'
     }
 
-    It 'refuse une destination dans la source' {
+    It 'rejects a destination inside the source' {
         { New-Backup -Source $script:Source -Destination (Join-Path $script:Source 'repo') } | Should -Throw
     }
 
-    It 'ignore une sauvegarde interrompue' {
+    It 'ignores an interrupted backup' {
         $backup = New-Backup -Source $script:Source -Destination $script:Repo -Mode Full
         $stale = [IO.Path]::Combine($backup.SetPath, '.tmp-20200101-000000000-full')
         [void][IO.Directory]::CreateDirectory($stale)
@@ -237,7 +237,7 @@ Describe 'Sauvegarde et restauration' -Skip:($env:OS -ne 'Windows_NT') {
         [IO.Directory]::Exists($stale) | Should -BeFalse
     }
 
-    It 'la retention conserve les chaines recentes et leurs dependances' {
+    It 'retention keeps recent chains and their dependencies' {
         $a = New-Backup -Source $script:Source -Destination $script:Repo -Mode Full
         Write-TestFile $script:Source 'change.txt' 'v2' | Out-Null
         [void](New-Backup -Source $script:Source -Destination $script:Repo)

@@ -1,11 +1,11 @@
 #requires -Version 5.1
 <#
 .SYNOPSIS
-    WinToolBox : sauvegarde, disques, maintenance et administration de Windows.
+    WinToolBox: Windows backup, disk management, maintenance and administration.
 .DESCRIPTION
-    Sans parametre, ouvre le menu interactif. Avec -Task Backup, execute une
-    sauvegarde sans interface (utilise par les taches planifiees).
-    Codes de sortie de -Task Backup : 0 succes, 1 echec, 2 sauvegarde partielle.
+    Without parameters, opens the interactive menu. With -Task Backup, runs a
+    backup without a UI (used by scheduled tasks).
+    -Task Backup exit codes: 0 success, 1 failure, 2 partial backup.
 #>
 [CmdletBinding()]
 param(
@@ -36,17 +36,17 @@ if ($Task -eq 'Backup') {
         exit 0
     }
     catch {
-        Write-Log -Level ERROR -Message "Sauvegarde planifiee en echec : $($_.Exception.Message)"
+        Write-Log -Level ERROR -Message "Scheduled backup failed: $($_.Exception.Message)"
         exit 1
     }
 }
 
-try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { Write-Verbose 'Encodage console inchange.' }
+try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { Write-Verbose 'Console encoding left unchanged.' }
 $Host.UI.RawUI.WindowTitle = "WinToolBox $script:AppVersion"
 
 if (-not (Test-IsAdmin)) {
-    Write-Status WARN 'Sans droits administrateur, les disques et plusieurs outils seront indisponibles.'
-    if (Confirm-Action 'Relancer en administrateur ?') {
+    Write-Status WARN 'Without administrator rights, disks and several tools will be unavailable.'
+    if (Confirm-Action 'Restart as administrator?') {
         $arguments = @('-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$script:EntryScript`"")
         Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $arguments
         exit 0
@@ -55,18 +55,18 @@ if (-not (Test-IsAdmin)) {
 
 $header = {
     $drive = [IO.DriveInfo]::new($env:SystemDrive)
-    $role = if (Test-IsAdmin) { 'administrateur' } else { 'standard' }
-    Write-Host ('  {0}  |  droits : {1}  |  {2} {3} libres sur {4}' -f $env:COMPUTERNAME, $role, $env:SystemDrive,
+    $role = if (Test-IsAdmin) { 'administrator' } else { 'standard' }
+    Write-Host ('  {0}  |  rights: {1}  |  {2} {3} free of {4}' -f $env:COMPUTERNAME, $role, $env:SystemDrive,
         (Format-Bytes $drive.AvailableFreeSpace), (Format-Bytes $drive.TotalSize)) -ForegroundColor DarkGray
 }
 
-Show-Menu -Title "WinToolBox $script:AppVersion" -ExitLabel 'Quitter' -Header $header -Items @(
-    @{ Section = 'DONNEES'; Key = '1'; Label = 'Sauvegarde et restauration'; Submenu = $true; Action = { Show-BackupMenu } }
-    @{ Section = 'DONNEES'; Key = '2'; Label = 'Disques et partitions'; Submenu = $true; Action = { Show-DiskMenu } }
-    @{ Section = 'ENTRETIEN'; Key = '3'; Label = 'Nettoyage et reparation'; Submenu = $true; Action = { Show-MaintenanceMenu } }
-    @{ Section = 'ADMINISTRATION'; Key = '4'; Label = 'Informations systeme'; Submenu = $true; Action = { Show-SystemMenu } }
-    @{ Section = 'ADMINISTRATION'; Key = '5'; Label = 'Reseau'; Submenu = $true; Action = { Show-NetworkMenu } }
-    @{ Section = 'ADMINISTRATION'; Key = '6'; Label = 'Utilisateurs et groupes'; Submenu = $true; Action = { Show-UsersMenu } }
-    @{ Section = 'PROTECTION'; Key = '7'; Label = 'Securite et journaux'; Submenu = $true; Action = { Show-SecurityMenu } }
+Show-Menu -Title "WinToolBox $script:AppVersion" -ExitLabel 'Quit' -Header $header -Items @(
+    @{ Section = 'DATA'; Key = '1'; Label = 'Backup and restore'; Submenu = $true; Action = { Show-BackupMenu } }
+    @{ Section = 'DATA'; Key = '2'; Label = 'Disks and partitions'; Submenu = $true; Action = { Show-DiskMenu } }
+    @{ Section = 'MAINTENANCE'; Key = '3'; Label = 'Cleanup and repair'; Submenu = $true; Action = { Show-MaintenanceMenu } }
+    @{ Section = 'ADMINISTRATION'; Key = '4'; Label = 'System information'; Submenu = $true; Action = { Show-SystemMenu } }
+    @{ Section = 'ADMINISTRATION'; Key = '5'; Label = 'Network'; Submenu = $true; Action = { Show-NetworkMenu } }
+    @{ Section = 'ADMINISTRATION'; Key = '6'; Label = 'Users and groups'; Submenu = $true; Action = { Show-UsersMenu } }
+    @{ Section = 'PROTECTION'; Key = '7'; Label = 'Security and logs'; Submenu = $true; Action = { Show-SecurityMenu } }
 )
 exit 0

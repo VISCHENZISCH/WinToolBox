@@ -1,18 +1,18 @@
-# Nettoyage avec analyse prealable, et reparation de Windows.
+# Cleanup with a prior scan, and Windows repair.
 
 function Get-CleanupTargets {
     $targets = @(
-        @{ Name = 'Fichiers temporaires utilisateur'; Root = $env:TEMP; MinAgeDays = 1; Admin = $false; Filter = '*' }
-        @{ Name = 'Fichiers temporaires Windows'; Root = (Join-Path $env:SystemRoot 'Temp'); MinAgeDays = 1; Admin = $true; Filter = '*' }
-        @{ Name = 'Cache Windows Update'; Root = (Join-Path $env:SystemRoot 'SoftwareDistribution\Download'); MinAgeDays = 0; Admin = $true; Filter = '*'; Service = 'wuauserv' }
-        @{ Name = 'Miniatures de l''explorateur'; Root = (Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\Explorer'); MinAgeDays = 0; Admin = $false; Filter = 'thumbcache_*.db' }
-        @{ Name = 'Rapports de plantage'; Root = (Join-Path $env:LOCALAPPDATA 'CrashDumps'); MinAgeDays = 0; Admin = $false; Filter = '*' }
-        @{ Name = 'Vidages memoire systeme'; Root = (Join-Path $env:SystemRoot 'Minidump'); MinAgeDays = 0; Admin = $true; Filter = '*' }
+        @{ Name = 'User temporary files'; Root = $env:TEMP; MinAgeDays = 1; Admin = $false; Filter = '*' }
+        @{ Name = 'Windows temporary files'; Root = (Join-Path $env:SystemRoot 'Temp'); MinAgeDays = 1; Admin = $true; Filter = '*' }
+        @{ Name = 'Windows Update cache'; Root = (Join-Path $env:SystemRoot 'SoftwareDistribution\Download'); MinAgeDays = 0; Admin = $true; Filter = '*'; Service = 'wuauserv' }
+        @{ Name = 'Explorer thumbnails'; Root = (Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\Explorer'); MinAgeDays = 0; Admin = $false; Filter = 'thumbcache_*.db' }
+        @{ Name = 'Crash reports'; Root = (Join-Path $env:LOCALAPPDATA 'CrashDumps'); MinAgeDays = 0; Admin = $false; Filter = '*' }
+        @{ Name = 'System memory dumps'; Root = (Join-Path $env:SystemRoot 'Minidump'); MinAgeDays = 0; Admin = $true; Filter = '*' }
     )
     return $targets
 }
 
-# Selectionne les fichiers eligibles sans rien modifier.
+# Selects eligible files without changing anything.
 function Get-CleanupCandidates {
     param(
         [Parameter(Mandatory)][string]$Root,
@@ -27,7 +27,7 @@ function Get-CleanupCandidates {
         })
 }
 
-# Supprime les candidats puis les dossiers vides ; les fichiers verrouilles sont comptes, pas caches.
+# Deletes the candidates and then empty folders; locked files are counted, not hidden.
 function Remove-CleanupCandidates {
     param([Parameter(Mandatory)][string]$Root, [object[]]$Candidates)
     $freed = [long]0
@@ -45,7 +45,7 @@ function Remove-CleanupCandidates {
         try {
             if ([IO.Directory]::GetFileSystemEntries($path).Length -eq 0) { [IO.Directory]::Delete($path) }
         }
-        catch { Write-Verbose "Dossier conserve : $dir" }
+        catch { Write-Verbose "Folder kept: $dir" }
     }
     return [pscustomobject]@{ Freed = $freed; Locked = $locked }
 }
@@ -63,20 +63,20 @@ function Get-RecycleBinSize {
 function Invoke-CleanupWizard {
     $isAdmin = Test-IsAdmin
     $rows = New-Object 'System.Collections.Generic.List[object]'
-    Write-Status INFO 'Analyse en cours, rien n''est supprime a cette etape.'
+    Write-Status INFO 'Scanning, nothing is deleted at this stage.'
     foreach ($target in Get-CleanupTargets) {
         if ($target.Admin -and -not $isAdmin) { continue }
         $candidates = @(Get-CleanupCandidates -Root $target.Root -MinAgeDays $target.MinAgeDays -Filter $target.Filter)
         $size = ($candidates | Measure-Object -Property Size -Sum).Sum
         $rows.Add([pscustomobject]@{ Name = $target.Name; Target = $target; Candidates = $candidates; Size = [long]$size })
     }
-    $rows.Add([pscustomobject]@{ Name = 'Corbeille (tous les lecteurs)'; Target = $null; Candidates = @(); Size = (Get-RecycleBinSize) })
+    $rows.Add([pscustomobject]@{ Name = 'Recycle Bin (all drives)'; Target = $null; Candidates = @(); Size = (Get-RecycleBinSize) })
 
     for ($i = 0; $i -lt $rows.Count; $i++) {
         Write-Host ('   [{0}] {1,-38} {2,10}' -f ($i + 1), $rows[$i].Name, (Format-Bytes $rows[$i].Size))
     }
-    if (-not $isAdmin) { Write-Status INFO 'Les caches systeme demandent les droits administrateur.' }
-    $answer = Read-Text 'Numeros separes par des virgules, A pour tout, vide pour annuler'
+    if (-not $isAdmin) { Write-Status INFO 'System caches require administrator rights.' }
+    $answer = Read-Text 'Numbers separated by commas, A for all, leave blank to cancel'
     if (-not $answer) { return }
 
     $selected = if ($answer -ieq 'A') { @($rows) } else {
@@ -86,11 +86,11 @@ function Invoke-CleanupWizard {
             })
     }
     if ($selected.Count -eq 0) {
-        Write-Status WARN 'Aucune selection valide.'
+        Write-Status WARN 'No valid selection.'
         return
     }
     $announced = ($selected | Measure-Object -Property Size -Sum).Sum
-    if (-not (Confirm-Action ('Supprimer environ {0} ?' -f (Format-Bytes $announced)))) { return }
+    if (-not (Confirm-Action ('Delete about {0}?' -f (Format-Bytes $announced)))) { return }
 
     $totalFreed = [long]0
     $totalLocked = 0
@@ -98,7 +98,7 @@ function Invoke-CleanupWizard {
         if ($null -eq $row.Target) {
             Clear-RecycleBin -Force -ErrorAction SilentlyContinue
             $totalFreed += $row.Size
-            Write-Status OK "$($row.Name) : videe."
+            Write-Status OK "$($row.Name): emptied."
             continue
         }
         $service = $null
@@ -114,29 +114,29 @@ function Invoke-CleanupWizard {
         }
         $totalFreed += $result.Freed
         $totalLocked += $result.Locked
-        Write-Status OK ('{0} : {1} liberes, {2} fichiers utilises conserves.' -f $row.Name, (Format-Bytes $result.Freed), $result.Locked)
+        Write-Status OK ('{0}: {1} freed, {2} files in use kept.' -f $row.Name, (Format-Bytes $result.Freed), $result.Locked)
     }
-    Write-Log -Message "Nettoyage : $totalFreed octets liberes, $totalLocked fichiers conserves."
+    Write-Log -Message "Cleanup: $totalFreed bytes freed, $totalLocked files kept."
     Write-Host ''
-    Write-Status OK ('Total libere : {0}.' -f (Format-Bytes $totalFreed))
+    Write-Status OK ('Total freed: {0}.' -f (Format-Bytes $totalFreed))
 }
 
-# Les commandes affichent leur progression ; seul leur code de retour decide du resultat.
+# The commands show their own progress; only their exit code decides the result.
 function Invoke-RepairCommand {
     param([Parameter(Mandatory)][string]$Label, [Parameter(Mandatory)][string]$Command, [string[]]$Arguments)
-    Write-Status INFO "$Label : cette operation peut durer plusieurs minutes."
+    Write-Status INFO "${Label}: this operation may take several minutes."
     & $Command @Arguments | Out-Host
     $code = $LASTEXITCODE
-    Write-Log -Message "$Label : code $code."
-    if ($code -eq 0) { Write-Status OK "$Label termine." }
-    else { Write-Status FAIL "$Label a renvoye le code $code." }
+    Write-Log -Message "${Label}: code $code."
+    if ($code -eq 0) { Write-Status OK "$Label completed." }
+    else { Write-Status FAIL "$Label returned code $code." }
 }
 
 function Show-MaintenanceMenu {
-    Show-Menu -Title 'Nettoyage et reparation' -Items @(
-        @{ Section = 'NETTOYAGE'; Key = '1'; Label = 'Analyser et nettoyer'; Action = { Invoke-CleanupWizard } }
-        @{ Section = 'NETTOYAGE'; Key = '2'; Label = 'Reduire le magasin de composants Windows'; Admin = $true; Action = { Invoke-RepairCommand -Label 'Nettoyage des composants' -Command 'dism.exe' -Arguments '/Online', '/Cleanup-Image', '/StartComponentCleanup' } }
-        @{ Section = 'REPARATION'; Key = '3'; Label = 'Reparer l''image Windows (DISM)'; Admin = $true; Action = { Invoke-RepairCommand -Label 'Reparation DISM' -Command 'dism.exe' -Arguments '/Online', '/Cleanup-Image', '/RestoreHealth' } }
-        @{ Section = 'REPARATION'; Key = '4'; Label = 'Verifier les fichiers systeme (SFC)'; Admin = $true; Action = { Invoke-RepairCommand -Label 'Verification SFC' -Command 'sfc.exe' -Arguments '/scannow' } }
+    Show-Menu -Title 'Cleanup and repair' -Items @(
+        @{ Section = 'CLEANUP'; Key = '1'; Label = 'Scan and clean'; Action = { Invoke-CleanupWizard } }
+        @{ Section = 'CLEANUP'; Key = '2'; Label = 'Shrink the Windows component store'; Admin = $true; Action = { Invoke-RepairCommand -Label 'Component cleanup' -Command 'dism.exe' -Arguments '/Online', '/Cleanup-Image', '/StartComponentCleanup' } }
+        @{ Section = 'REPAIR'; Key = '3'; Label = 'Repair the Windows image (DISM)'; Admin = $true; Action = { Invoke-RepairCommand -Label 'DISM repair' -Command 'dism.exe' -Arguments '/Online', '/Cleanup-Image', '/RestoreHealth' } }
+        @{ Section = 'REPAIR'; Key = '4'; Label = 'Check system files (SFC)'; Admin = $true; Action = { Invoke-RepairCommand -Label 'SFC check' -Command 'sfc.exe' -Arguments '/scannow' } }
     )
 }

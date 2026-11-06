@@ -1,4 +1,4 @@
-# Socle commun : environnement, journal, affichage, saisies et parcours de fichiers.
+# Shared foundation: environment, logging, display, input and file traversal.
 
 $script:LogFile = $null
 $script:ReportDir = $null
@@ -20,7 +20,7 @@ function Initialize-App {
     $script:LogFile = Join-Path $logDir 'wintoolbox.log'
 }
 
-# Le journal ne doit jamais faire echouer l'operation qu'il documente.
+# Logging must never make the operation it documents fail.
 function Write-Log {
     param(
         [ValidateSet('INFO', 'WARN', 'ERROR')][string]$Level = 'INFO',
@@ -34,12 +34,12 @@ function Write-Log {
         $line = '{0} [{1}] {2}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Level, $Message
         [IO.File]::AppendAllText($script:LogFile, $line + [Environment]::NewLine)
     }
-    catch { Write-Verbose "Journal indisponible : $($_.Exception.Message)" }
+    catch { Write-Verbose "Log unavailable: $($_.Exception.Message)" }
 }
 
 function Format-Bytes {
     param([double]$Bytes)
-    $units = 'o', 'Ko', 'Mo', 'Go', 'To', 'Po'
+    $units = 'B', 'KB', 'MB', 'GB', 'TB', 'PB'
     $index = 0
     while ($Bytes -ge 1024 -and $index -lt $units.Count - 1) {
         $Bytes /= 1024
@@ -49,7 +49,7 @@ function Format-Bytes {
     return ('{0:0.0} {1}' -f $Bytes, $units[$index])
 }
 
-# Convertit une taille saisie en Go ("1,5" ou "1.5") en octets ; $null si invalide.
+# Converts a size entered in GB ("1,5" or "1.5") to bytes; $null if invalid.
 function ConvertTo-BytesFromGb {
     param([string]$Text)
     $value = 0.0
@@ -77,7 +77,7 @@ function Write-Status {
 
 function Wait-Key {
     Write-Host ''
-    [void](Read-Host '  Entree pour continuer')
+    [void](Read-Host '  Press Enter to continue')
 }
 
 function Read-Text {
@@ -87,22 +87,22 @@ function Read-Text {
 
 function Confirm-Action {
     param([string]$Message)
-    return ((Read-Text "$Message [O/N]") -ieq 'O')
+    return ((Read-Text "$Message [Y/N]") -ieq 'Y')
 }
 
-# Pour les actions irreversibles : la phrase exacte doit etre retapee.
+# For irreversible actions: the exact phrase must be typed back.
 function Confirm-Phrase {
     param([string]$Message, [Parameter(Mandatory)][string]$Phrase)
     Write-Status WARN $Message
-    return ((Read-Text "Tapez exactement '$Phrase' pour confirmer") -ceq $Phrase)
+    return ((Read-Text "Type exactly '$Phrase' to confirm") -ceq $Phrase)
 }
 
-# Affiche une liste numerotee et renvoie l'element choisi, ou $null.
+# Displays a numbered list and returns the chosen item, or $null.
 function Select-FromList {
     param(
         [object[]]$Items,
         [Parameter(Mandatory)][scriptblock]$Format,
-        [string]$Prompt = 'Numero (vide pour annuler)'
+        [string]$Prompt = 'Number (leave blank to cancel)'
     )
     $Items = @($Items)
     if ($Items.Count -eq 0) { return $null }
@@ -118,7 +118,7 @@ function Select-FromList {
 function Invoke-MenuAction {
     param([Parameter(Mandatory)][hashtable]$Item)
     if ($Item.Admin -and -not (Test-IsAdmin)) {
-        Write-Status WARN 'Cette action demande les droits administrateur.'
+        Write-Status WARN 'This action requires administrator rights.'
         Wait-Key
         return
     }
@@ -127,18 +127,18 @@ function Invoke-MenuAction {
     }
     catch {
         Write-Status FAIL $_.Exception.Message
-        Write-Log -Level ERROR -Message "$($Item.Label) : $($_.Exception.Message)"
+        Write-Log -Level ERROR -Message "$($Item.Label): $($_.Exception.Message)"
     }
     if (-not $Item.Submenu) { Wait-Key }
 }
 
-# Menu pilote par les donnees. Chaque element : Key, Label, Action, et en option
-# Section, Admin (droits requis) et Submenu (pas de pause au retour).
+# Data-driven menu. Each item: Key, Label, Action, and optionally
+# Section, Admin (rights required) and Submenu (no pause on return).
 function Show-Menu {
     param(
         [Parameter(Mandatory)][string]$Title,
         [Parameter(Mandatory)][hashtable[]]$Items,
-        [string]$ExitLabel = 'Retour',
+        [string]$ExitLabel = 'Back',
         [scriptblock]$Header
     )
     while ($true) {
@@ -153,18 +153,18 @@ function Show-Menu {
                 Write-Host ''
                 Write-Host "  $section" -ForegroundColor Cyan
             }
-            $suffix = if ($item.Admin -and -not $isAdmin) { '  (admin requis)' } else { '' }
+            $suffix = if ($item.Admin -and -not $isAdmin) { '  (admin required)' } else { '' }
             Write-Host ('   [{0}] {1}{2}' -f $item.Key, $item.Label, $suffix)
         }
         Write-Host ''
         Write-Host "   [Q] $ExitLabel"
         Write-Host ''
-        $choice = Read-Text 'Choix'
+        $choice = Read-Text 'Choice'
         if ($choice -ieq 'Q') { return }
         if (-not $choice) { continue }
         $selected = $Items | Where-Object { $_.Key -ieq $choice } | Select-Object -First 1
         if (-not $selected) {
-            Write-Status WARN "Option '$choice' invalide."
+            Write-Status WARN "Invalid option '$choice'."
             Start-Sleep -Seconds 1
             continue
         }
@@ -181,7 +181,7 @@ function Resolve-FullPath {
     return $full
 }
 
-# Vrai si $Child est $Parent ou se trouve a l'interieur.
+# True if $Child is $Parent or is located inside it.
 function Test-PathInside {
     param([Parameter(Mandatory)][string]$Child, [Parameter(Mandatory)][string]$Parent)
     $separators = '\', '/'
@@ -190,7 +190,7 @@ function Test-PathInside {
     return $childNorm.StartsWith($parentNorm, [StringComparison]::OrdinalIgnoreCase)
 }
 
-# Prefixe \\?\ pour franchir la limite de 260 caracteres dans les appels .NET.
+# \\?\ prefix to get past the 260-character limit in .NET calls.
 function ConvertTo-LongPath {
     param([Parameter(Mandatory)][string]$Path)
     if (-not (Test-IsWindows) -or $Path.StartsWith('\\?\')) { return $Path }
@@ -200,13 +200,13 @@ function ConvertTo-LongPath {
 
 function Test-LinkItem {
     param([Parameter(Mandatory)][IO.FileSystemInfo]$Item)
-    # Les dossiers OneDrive sont aussi des points d'analyse : seuls les vrais liens sont ignores.
+    # OneDrive folders are also reparse points: only real links are skipped.
     try { return ($Item.LinkType -in 'Junction', 'SymbolicLink') }
     catch { return $true }
 }
 
-# Parcours iteratif resistant aux erreurs d'acces : renvoie Files, Dirs, Links et Errors.
-# Les chemins sont relatifs a $Root ; les liens ne sont jamais suivis, ce qui evite les boucles.
+# Iterative traversal that tolerates access errors: returns Files, Dirs, Links and Errors.
+# Paths are relative to $Root; links are never followed, which prevents loops.
 function Get-FileEntries {
     param(
         [Parameter(Mandatory)][string]$Root,

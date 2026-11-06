@@ -1,8 +1,8 @@
-# Donnees generees localement : elles peuvent contenir des informations sur la machine
+# Locally generated data: it may contain information about the machine
 logs/
 reports/
 
-# Fichiers temporaires
+# Temporary files
 *.tmp
 *.temp
 *.bak
@@ -10,11 +10,11 @@ reports/
 *.swo
 *~
 
-# Fichiers systeme Windows
+# Windows system files
 Thumbs.db
 ehthumbs.db
 Desktop.ini
 $RECYCLE.BIN/
 
-# Resultats de tests
+# Test results
 testResults.xml

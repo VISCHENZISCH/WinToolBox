@@ -1,14 +1,16 @@
-# Sauvegarde de fichiers versionnee.
+# Versioned file backup.
 #
-# Depot : <destination>\<jeu>\<id>\ avec data\ (fichiers copies), files.tsv (etat complet de la
-# source), dirs.txt, errors.txt et meta.json. Une sauvegarde est construite dans .tmp-<id> puis
-# renommee : un dossier <id> present est donc toujours complet. files.tsv indique pour chaque
-# fichier la sauvegarde qui le stocke, ce qui rend chaque version restaurable directement.
+# Repository: <destination>\<set>\<id>\ with data\ (copied files), files.tsv (full state of the
+# source), dirs.txt, errors.txt and meta.json. A backup is built in .tmp-<id> and then
+# renamed, so an existing <id> folder is always complete. For each file, files.tsv records
+# the backup that stores it, which makes every version directly restorable.
 
 function Get-BackupSetName {
     param([Parameter(Mandatory)][string]$Source)
     $clean = $Source.TrimEnd('\', '/')
     $leaf = [IO.Path]::GetFileName($clean)
+    # On-disk identifier, deliberately not translated: renaming it would orphan existing
+    # drive-root backup sets and silently start a new chain.
     if (-not $leaf) { $leaf = 'Disque' }
     $leaf = $leaf -replace '[^\w.-]', '_'
     $sha = [Security.Cryptography.SHA256]::Create()
@@ -30,7 +32,7 @@ function Get-FileSha256 {
     }
 }
 
-# Format TSV : la tabulation est interdite dans les noms de fichiers NTFS.
+# TSV format: tabs are not allowed in NTFS file names.
 function Write-Manifest {
     param([Parameter(Mandatory)][string]$Path, [object[]]$Entries)
     $writer = [IO.StreamWriter]::new($Path, $false, [Text.UTF8Encoding]::new($false))
@@ -88,9 +90,9 @@ function Resolve-BackupMode {
 
 function Assert-BackupPaths {
     param([Parameter(Mandatory)][string]$Source, [Parameter(Mandatory)][string]$Destination)
-    if (-not [IO.Directory]::Exists($Source)) { throw "Source introuvable : $Source" }
+    if (-not [IO.Directory]::Exists($Source)) { throw "Source not found: $Source" }
     if ((Test-PathInside -Child $Destination -Parent $Source) -or (Test-PathInside -Child $Source -Parent $Destination)) {
-        throw 'La source et la destination ne doivent pas etre imbriquees.'
+        throw 'The source and destination must not be nested.'
     }
 }
 
@@ -106,7 +108,7 @@ function Assert-FreeSpace {
     param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][long]$Needed)
     $free = Get-FreeBytes $Path
     if ($null -ne $free -and $free -lt $Needed) {
-        throw ('Espace insuffisant sur {0} : {1} requis, {2} libres.' -f $Path, (Format-Bytes $Needed), (Format-Bytes $free))
+        throw ('Not enough space on {0}: {1} required, {2} free.' -f $Path, (Format-Bytes $Needed), (Format-Bytes $free))
     }
 }
 
@@ -118,12 +120,12 @@ function Remove-Tree {
 function Get-RobocopyCommonArgs {
     $arguments = @('/COPY:DAT', '/DCOPY:T', '/R:2', '/W:5', '/NP', '/NFL', '/NDL', '/NJH', '/NJS')
     if ($script:LogFile) { $arguments += "/UNILOG+:$($script:LogFile).robocopy" }
-    # /B lit les fichiers proteges par leurs droits, mais exige le privilege de sauvegarde.
+    # /B reads files protected by their permissions, but requires the backup privilege.
     if (Test-IsAdmin) { $arguments += '/B' }
     return $arguments
 }
 
-# Robocopy renvoie un masque : 8 ou plus signale des fichiers non copies.
+# Robocopy returns a bitmask: 8 or higher means some files were not copied.
 function Invoke-Robocopy {
     param([Parameter(Mandatory)][string[]]$Arguments)
     & robocopy.exe @Arguments | Out-Null
@@ -143,7 +145,7 @@ function Copy-Tree {
     return (Invoke-Robocopy -Arguments $arguments)
 }
 
-# Copie des fichiers precis d'un meme dossier, par lots pour respecter la longueur de commande.
+# Copies specific files from one folder, in batches to respect the command length limit.
 function Copy-FileGroup {
     param(
         [Parameter(Mandatory)][string]$FromDir,
@@ -186,18 +188,18 @@ function Group-EntriesForCopy {
     return $groups.Values
 }
 
-# Instantane VSS : permet de lire les fichiers ouverts (droits administrateur requis).
+# VSS snapshot: allows reading open files (administrator rights required).
 function New-VssSnapshot {
     param([Parameter(Mandatory)][string]$Volume)
     $created = Invoke-CimMethod -ClassName Win32_ShadowCopy -MethodName Create -Arguments @{ Volume = $Volume; Context = 'ClientAccessible' }
-    if ($created.ReturnValue -ne 0) { throw "Creation de l'instantane VSS impossible (code $($created.ReturnValue))." }
+    if ($created.ReturnValue -ne 0) { throw "Could not create the VSS snapshot (code $($created.ReturnValue))." }
     $shadow = Get-CimInstance -ClassName Win32_ShadowCopy -Filter "ID='$($created.ShadowID)'"
-    # %SystemRoot%\Temp n'est pas modifiable par un compte standard, contrairement a %TEMP%.
+    # %SystemRoot%\Temp is not writable by a standard account, unlike %TEMP%.
     $link = Join-Path $env:SystemRoot ("Temp\wtb-vss-{0}" -f [guid]::NewGuid().ToString('N'))
     & cmd.exe /c mklink /d "$link" "$($shadow.DeviceObject)\" | Out-Null
     if ($LASTEXITCODE -ne 0) {
         Remove-CimInstance -InputObject $shadow
-        throw "Montage de l'instantane VSS impossible."
+        throw "Could not mount the VSS snapshot."
     }
     return [pscustomobject]@{ Shadow = $shadow; Link = $link }
 }
@@ -226,7 +228,7 @@ function New-Backup {
 
     $setPath = [IO.Path]::Combine($Destination, (Get-BackupSetName $Source))
     [void][IO.Directory]::CreateDirectory($setPath)
-    # Le verrou exclusif empeche une sauvegarde manuelle et une tache planifiee de se croiser.
+    # The exclusive lock stops a manual backup and a scheduled task from overlapping.
     $lock = [IO.File]::Open([IO.Path]::Combine($setPath, '.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
     $snapshot = $null
     $tempDir = $null
@@ -247,12 +249,12 @@ function New-Backup {
         $readRoot = $Source
         if ($UseVss) {
             $volume = [IO.Path]::GetPathRoot($Source)
-            if ($volume.StartsWith('\\')) { throw 'VSS ne fonctionne pas sur un partage reseau.' }
+            if ($volume.StartsWith('\\')) { throw 'VSS does not work on a network share.' }
             $snapshot = New-VssSnapshot -Volume $volume
             $readRoot = [IO.Path]::Combine($snapshot.Link, $Source.Substring($volume.Length))
         }
 
-        Write-Progress -Activity 'Sauvegarde' -Status 'Analyse de la source'
+        Write-Progress -Activity 'Backup' -Status 'Scanning the source'
         $listing = Get-FileEntries -Root $readRoot -ExcludeDirs $ExcludeDirs -ExcludeFiles $ExcludeFiles
 
         $entries = New-Object 'System.Collections.Generic.List[object]'
@@ -270,7 +272,7 @@ function New-Backup {
         }
 
         if ($effectiveMode -eq 'Incremental' -and $toCopy.Count -eq 0 -and $entries.Count -eq $previousCount) {
-            Write-Log -Message "Sauvegarde $Source : aucun changement."
+            Write-Log -Message "Backup ${Source}: no change."
             return [pscustomobject]@{ Status = 'NoChange'; Id = $catalog[-1].Id; SetPath = $setPath; CopiedFiles = 0; CopiedBytes = 0; TotalFiles = $entries.Count; Failed = 0; Unreadable = $listing.Errors.Count; Links = $listing.Links.Count; Chain = $effectiveMode }
         }
         Assert-FreeSpace -Path $Destination -Needed $bytesToCopy
@@ -281,14 +283,14 @@ function New-Backup {
         $dataDir = [IO.Path]::Combine($tempDir, 'data')
         [void][IO.Directory]::CreateDirectory($dataDir)
 
-        # Une copie globale est bien plus rapide pour une sauvegarde complete, tant que la
-        # liste d'exclusions des liens tient dans la longueur maximale d'une commande.
+        # A whole-tree copy is much faster for a full backup, as long as the
+        # link exclusion list fits within the maximum command length.
         $linkPaths = @($listing.Links | ForEach-Object { [IO.Path]::Combine($readRoot, $_) })
         $linkLength = ($linkPaths | Measure-Object -Property Length -Sum).Sum
-        Write-Progress -Activity 'Sauvegarde' -Status ('Copie de {0} fichiers ({1})' -f $toCopy.Count, (Format-Bytes $bytesToCopy))
+        Write-Progress -Activity 'Backup' -Status ('Copying {0} files ({1})' -f $toCopy.Count, (Format-Bytes $bytesToCopy))
         if ($effectiveMode -eq 'Full' -and $linkLength -lt 20000) {
             [void](Copy-Tree -From $readRoot -To $dataDir -ExcludeDirs (@($ExcludeDirs) + $linkPaths) -ExcludeFiles (@($ExcludeFiles) + $linkPaths))
-            # Copier une racine de lecteur rend le dossier cible cache et systeme.
+            # Copying a drive root makes the target folder hidden and system.
             if (Test-IsWindows) { [IO.File]::SetAttributes($dataDir, [IO.FileAttributes]::Directory) }
         }
         else {
@@ -299,20 +301,20 @@ function New-Backup {
             }
         }
 
-        # Chaque copie est controlee individuellement : le code de robocopy ne dit pas quels
-        # fichiers manquent. Un fichier rate garde sa version precedente dans le manifeste.
+        # Each copy is checked individually: the robocopy exit code does not say which
+        # files are missing. A failed file keeps its previous version in the manifest.
         $failed = New-Object 'System.Collections.Generic.List[string]'
         $copiedBytes = [long]0
         $done = 0
         foreach ($file in $toCopy) {
             $done++
             if ($done % 200 -eq 0) {
-                Write-Progress -Activity 'Sauvegarde' -Status 'Controle des copies' -PercentComplete ([int](100 * $done / $toCopy.Count))
+                Write-Progress -Activity 'Backup' -Status 'Checking copies' -PercentComplete ([int](100 * $done / $toCopy.Count))
             }
             $stored = [IO.Path]::Combine($dataDir, $file.Rel)
             try {
                 $copy = [IO.FileInfo]::new((ConvertTo-LongPath $stored))
-                if (-not $copy.Exists -or $copy.Length -ne $file.Size) { throw 'copie absente ou incomplete' }
+                if (-not $copy.Exists -or $copy.Length -ne $file.Size) { throw 'copy missing or incomplete' }
                 $entries.Add([pscustomobject]@{ Size = $file.Size; Ticks = $file.Ticks; Hash = (Get-FileSha256 $stored); Store = $id; Rel = $file.Rel })
                 $copiedBytes += $file.Size
             }
@@ -322,12 +324,12 @@ function New-Backup {
                 if ($known) { $entries.Add($known) }
             }
         }
-        Write-Progress -Activity 'Sauvegarde' -Completed
+        Write-Progress -Activity 'Backup' -Completed
 
         $status = if ($failed.Count -or $listing.Errors.Count) { 'Partial' } else { 'Complete' }
         Write-Manifest -Path ([IO.Path]::Combine($tempDir, 'files.tsv')) -Entries $entries.ToArray()
         [IO.File]::WriteAllLines([IO.Path]::Combine($tempDir, 'dirs.txt'), [string[]]$listing.Dirs.ToArray())
-        [IO.File]::WriteAllLines([IO.Path]::Combine($tempDir, 'errors.txt'), [string[]](@($failed | ForEach-Object { "COPIE`t$_" }) + @($listing.Errors | ForEach-Object { "LECTURE`t$_" })))
+        [IO.File]::WriteAllLines([IO.Path]::Combine($tempDir, 'errors.txt'), [string[]](@($failed | ForEach-Object { "COPY`t$_" }) + @($listing.Errors | ForEach-Object { "READ`t$_" })))
 
         $totalBytes = ($entries | Measure-Object -Property Size -Sum).Sum
         if ($null -eq $totalBytes) { $totalBytes = 0 }
@@ -344,21 +346,21 @@ function New-Backup {
         if ($KeepChains -gt 0) { [void](Remove-OldBackupChains -SetPath $setPath -KeepChains $KeepChains) }
 
         $level = if ($status -eq 'Complete') { 'INFO' } else { 'WARN' }
-        Write-Log -Level $level -Message ('Sauvegarde {0} -> {1} : {2}, {3}, {4} fichiers copies, {5} echecs, {6} dossiers illisibles.' -f $Source, $id, $effectiveMode, $status, $meta.CopiedFiles, $failed.Count, $listing.Errors.Count)
+        Write-Log -Level $level -Message ('Backup {0} -> {1}: {2}, {3}, {4} files copied, {5} failures, {6} unreadable folders.' -f $Source, $id, $effectiveMode, $status, $meta.CopiedFiles, $failed.Count, $listing.Errors.Count)
         return [pscustomobject]@{ Status = $status; Id = $id; SetPath = $setPath; CopiedFiles = $meta.CopiedFiles; CopiedBytes = $copiedBytes; TotalFiles = $entries.Count; Failed = $failed.Count; Unreadable = $listing.Errors.Count; Links = $listing.Links.Count; Chain = $effectiveMode }
     }
     finally {
         if ($tempDir -and [IO.Directory]::Exists($tempDir)) {
-            try { Remove-Tree $tempDir } catch { Write-Log -Level WARN -Message "Dossier temporaire non supprime : $tempDir" }
+            try { Remove-Tree $tempDir } catch { Write-Log -Level WARN -Message "Temporary folder not removed: $tempDir" }
         }
         if ($snapshot) {
-            try { Remove-VssSnapshot -Snapshot $snapshot } catch { Write-Log -Level WARN -Message "Instantane VSS non supprime : $($_.Exception.Message)" }
+            try { Remove-VssSnapshot -Snapshot $snapshot } catch { Write-Log -Level WARN -Message "VSS snapshot not removed: $($_.Exception.Message)" }
         }
         $lock.Dispose()
     }
 }
 
-# Controle chaque fichier d'une version avec son empreinte SHA-256.
+# Checks every file of a version against its SHA-256 hash.
 function Test-Backup {
     param([Parameter(Mandatory)][string]$BackupPath)
     $setPath = [IO.Path]::GetDirectoryName($BackupPath)
@@ -367,7 +369,7 @@ function Test-Backup {
     $checked = 0
     foreach ($entry in Read-Manifest -Path ([IO.Path]::Combine($BackupPath, 'files.tsv'))) {
         $checked++
-        if ($checked % 200 -eq 0) { Write-Progress -Activity 'Verification' -Status "$checked fichiers" }
+        if ($checked % 200 -eq 0) { Write-Progress -Activity 'Verification' -Status "$checked files" }
         $stored = [IO.Path]::Combine($setPath, $entry.Store, 'data', $entry.Rel)
         if (-not [IO.File]::Exists((ConvertTo-LongPath $stored))) { $missing.Add($entry.Rel); continue }
         if ((Get-FileSha256 $stored) -ne $entry.Hash) { $corrupt.Add($entry.Rel) }
@@ -385,7 +387,7 @@ function Restore-Backup {
     )
     $Target = Resolve-FullPath $Target
     $setPath = [IO.Path]::GetDirectoryName($BackupPath)
-    if (Test-PathInside -Child $Target -Parent $setPath) { throw 'La cible ne doit pas se trouver dans le depot de sauvegarde.' }
+    if (Test-PathInside -Child $Target -Parent $setPath) { throw 'The target must not be inside the backup repository.' }
 
     $selected = @(Read-Manifest -Path ([IO.Path]::Combine($BackupPath, 'files.tsv')) | Where-Object { $_.Rel -like $Filter })
     $needed = ($selected | Measure-Object -Property Size -Sum).Sum
@@ -411,20 +413,20 @@ function Restore-Backup {
     $done = 0
     foreach ($entry in $selected) {
         $done++
-        if ($done % 200 -eq 0) { Write-Progress -Activity 'Restauration' -Status 'Controle' -PercentComplete ([int](100 * $done / $selected.Count)) }
+        if ($done % 200 -eq 0) { Write-Progress -Activity 'Restore' -Status 'Checking' -PercentComplete ([int](100 * $done / $selected.Count)) }
         $restored = [IO.Path]::Combine($Target, $entry.Rel)
         try {
             if ((Get-FileSha256 $restored) -ne $entry.Hash) { $failed.Add($entry.Rel) }
         }
         catch { $failed.Add($entry.Rel) }
     }
-    Write-Progress -Activity 'Restauration' -Completed
-    Write-Log -Level $(if ($failed.Count) { 'WARN' } else { 'INFO' }) -Message ('Restauration {0} -> {1} : {2} fichiers, {3} echecs.' -f $BackupPath, $Target, $selected.Count, $failed.Count)
+    Write-Progress -Activity 'Restore' -Completed
+    Write-Log -Level $(if ($failed.Count) { 'WARN' } else { 'INFO' }) -Message ('Restore {0} -> {1}: {2} files, {3} failures.' -f $BackupPath, $Target, $selected.Count, $failed.Count)
     return [pscustomobject]@{ Restored = $selected.Count - $failed.Count; Failed = $failed; Ok = ($failed.Count -eq 0) }
 }
 
-# Conserve les N chaines les plus recentes. Une chaine (une complete et ses incrementales)
-# est supprimee d'un bloc : aucune version conservee ne depend d'une chaine plus ancienne.
+# Keeps the N most recent chains. A chain (one full backup and its incrementals)
+# is deleted as a block: no kept version depends on an older chain.
 function Remove-OldBackupChains {
     param([Parameter(Mandatory)][string]$SetPath, [Parameter(Mandatory)][ValidateRange(1, 1000)][int]$KeepChains)
     $catalog = @(Get-BackupCatalog -SetPath $SetPath)
@@ -436,20 +438,20 @@ function Remove-OldBackupChains {
         Remove-Tree $catalog[$i].Path
         $removed += $catalog[$i].Id
     }
-    Write-Log -Message "Retention $SetPath : $($removed.Count) versions supprimees."
+    Write-Log -Message "Retention ${SetPath}: $($removed.Count) versions deleted."
     return $removed
 }
 
 function Start-SystemImageBackup {
     param([Parameter(Mandatory)][string]$TargetDrive)
-    if ($TargetDrive -notmatch '^[A-Za-z]:$') { throw 'Indiquez un lecteur au format E:' }
-    if ($TargetDrive -ieq $env:SystemDrive) { throw "L'image systeme ne peut pas etre stockee sur le disque systeme." }
+    if ($TargetDrive -notmatch '^[A-Za-z]:$') { throw 'Enter a drive in the format E:' }
+    if ($TargetDrive -ieq $env:SystemDrive) { throw "The system image cannot be stored on the system drive." }
     & wbadmin.exe start backup "-backupTarget:$TargetDrive" -allCritical -quiet | Out-Host
-    if ($LASTEXITCODE -ne 0) { throw "wbadmin a echoue (code $LASTEXITCODE)." }
-    Write-Log -Message "Image systeme creee sur $TargetDrive."
+    if ($LASTEXITCODE -ne 0) { throw "wbadmin failed (code $LASTEXITCODE)." }
+    Write-Log -Message "System image created on $TargetDrive."
 }
 
-# Un \ final echapperait le guillemet fermant : "D:\" doit s'ecrire "D:\\".
+# A trailing \ would escape the closing quote: "D:\" must be written "D:\\".
 function ConvertTo-QuotedArgument {
     param([Parameter(Mandatory)][string]$Value)
     if ($Value.EndsWith('\')) { $Value += '\' }
@@ -466,7 +468,7 @@ function Register-BackupSchedule {
         [int]$FullEvery = 7,
         [int]$KeepChains = 4
     )
-    if ($Name -notmatch '^[\w -]{1,50}$') { throw 'Nom de tache invalide.' }
+    if ($Name -notmatch '^[\w -]{1,50}$') { throw 'Invalid task name.' }
     $Source = Resolve-FullPath $Source
     $Destination = Resolve-FullPath $Destination
     Assert-BackupPaths -Source $Source -Destination $Destination
@@ -474,24 +476,24 @@ function Register-BackupSchedule {
     $arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0} -Task Backup -Source {1} -Destination {2} -Mode Incremental -FullEvery {3} -KeepChains {4}' -f (ConvertTo-QuotedArgument $script:EntryScript), (ConvertTo-QuotedArgument $Source), (ConvertTo-QuotedArgument $Destination), $FullEvery, $KeepChains
     $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $arguments
     $trigger = if ($Frequency -eq 'Daily') { New-ScheduledTaskTrigger -Daily -At $at } else { New-ScheduledTaskTrigger -Weekly -DaysOfWeek Sunday -At $at }
-    # Droits limites du compte courant : le script vit dans un dossier modifiable par
-    # l'utilisateur, l'executer en SYSTEM offrirait une elevation de privileges.
+    # Limited rights of the current account: the script lives in a folder the user can
+    # modify, so running it as SYSTEM would allow privilege escalation.
     $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType S4U -RunLevel Limited
     $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
     [void](Register-ScheduledTask -TaskPath '\WinToolBox\' -TaskName $Name -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force)
-    Write-Log -Message "Tache planifiee creee : $Name."
+    Write-Log -Message "Scheduled task created: $Name."
 }
 
-# --- Interface ---
+# --- User interface ---
 
 function Select-BackupSet {
-    $root = Read-Text 'Dossier de destination des sauvegardes'
+    $root = Read-Text 'Backup destination folder'
     if (-not $root) { return $null }
     $root = Resolve-FullPath $root
-    if (-not [IO.Directory]::Exists($root)) { throw "Dossier introuvable : $root" }
+    if (-not [IO.Directory]::Exists($root)) { throw "Folder not found: $root" }
     $sets = @([IO.Directory]::GetDirectories($root) | Where-Object { @(Get-BackupCatalog -SetPath $_).Count -gt 0 })
     if ($sets.Count -eq 0) {
-        Write-Status WARN 'Aucune sauvegarde dans ce dossier.'
+        Write-Status WARN 'No backups in this folder.'
         return $null
     }
     return (Select-FromList -Items $sets -Format { param($s) [IO.Path]::GetFileName($s) })
@@ -499,9 +501,9 @@ function Select-BackupSet {
 
 function Format-BackupLabel {
     param([Parameter(Mandatory)][object]$Backup)
-    # ConvertFrom-Json renvoie une chaine sous PowerShell 5.1 et une date sous PowerShell 7.
+    # ConvertFrom-Json returns a string on PowerShell 5.1 and a date on PowerShell 7.
     $when = ([datetime]$Backup.CreatedUtc).ToLocalTime().ToString('yyyy-MM-dd HH:mm')
-    return ('{0}  {1,-11}  {2,-8}  {3} fichiers  {4}' -f $when, $Backup.Type, $Backup.Status, $Backup.FileCount, (Format-Bytes $Backup.TotalBytes))
+    return ('{0}  {1,-11}  {2,-8}  {3} files  {4}' -f $when, $Backup.Type, $Backup.Status, $Backup.FileCount, (Format-Bytes $Backup.TotalBytes))
 }
 
 function Select-Backup {
@@ -513,34 +515,34 @@ function Select-Backup {
 function Write-BackupResult {
     param([Parameter(Mandatory)][object]$Result)
     switch ($Result.Status) {
-        'NoChange' { Write-Status OK 'Aucun changement depuis la derniere sauvegarde.' }
-        'Complete' { Write-Status OK ('Sauvegarde terminee ({0}) : {1} fichiers copies, {2}.' -f $Result.Chain, $Result.CopiedFiles, (Format-Bytes $Result.CopiedBytes)) }
-        default { Write-Status WARN ('Sauvegarde partielle : {0} copies, {1} echecs, {2} dossiers illisibles. Voir errors.txt dans {3}.' -f $Result.CopiedFiles, $Result.Failed, $Result.Unreadable, $Result.Id) }
+        'NoChange' { Write-Status OK 'No changes since the last backup.' }
+        'Complete' { Write-Status OK ('Backup completed ({0}): {1} files copied, {2}.' -f $Result.Chain, $Result.CopiedFiles, (Format-Bytes $Result.CopiedBytes)) }
+        default { Write-Status WARN ('Partial backup: {0} copied, {1} failures, {2} unreadable folders. See errors.txt in {3}.' -f $Result.CopiedFiles, $Result.Failed, $Result.Unreadable, $Result.Id) }
     }
-    if ($Result.Links) { Write-Status INFO "$($Result.Links) liens et jonctions ignores." }
+    if ($Result.Links) { Write-Status INFO "$($Result.Links) links and junctions skipped." }
 }
 
 function Invoke-BackupWizard {
-    $source = Read-Text 'Dossier a sauvegarder'
-    $destination = Read-Text 'Dossier de destination'
+    $source = Read-Text 'Folder to back up'
+    $destination = Read-Text 'Destination folder'
     if (-not $source -or -not $destination) { return }
-    $mode = if ((Read-Text 'Type : [I]ncrementale ou [C]omplete') -ieq 'C') { 'Full' } else { 'Incremental' }
-    $useVss = (Test-IsAdmin) -and (Confirm-Action 'Inclure les fichiers ouverts avec VSS ?')
+    $mode = if ((Read-Text 'Type: [I]ncremental or [F]ull') -ieq 'F') { 'Full' } else { 'Incremental' }
+    $useVss = (Test-IsAdmin) -and (Confirm-Action 'Include open files using VSS?')
     Write-BackupResult -Result (New-Backup -Source $source -Destination $destination -Mode $mode -UseVss:$useVss)
 }
 
 function Invoke-RestoreWizard {
     $backup = Select-Backup
     if (-not $backup) { return }
-    $target = Read-Text 'Dossier de restauration'
+    $target = Read-Text 'Restore folder'
     if (-not $target) { return }
-    $filter = Read-Text 'Filtre, par exemple Photos\* (vide pour tout restaurer)'
+    $filter = Read-Text 'Filter, for example Photos\* (leave blank to restore everything)'
     if (-not $filter) { $filter = '*' }
-    if (-not (Confirm-Action "Les fichiers de meme nom seront ecrases dans $target. Continuer ?")) { return }
+    if (-not (Confirm-Action "Files with the same name in $target will be overwritten. Continue?")) { return }
     $result = Restore-Backup -BackupPath $backup.Path -Target $target -Filter $filter
-    if ($result.Ok) { Write-Status OK "$($result.Restored) fichiers restaures et verifies." }
+    if ($result.Ok) { Write-Status OK "$($result.Restored) files restored and verified." }
     else {
-        Write-Status FAIL "$($result.Failed.Count) fichiers non restaures :"
+        Write-Status FAIL "$($result.Failed.Count) files not restored:"
         $result.Failed | Select-Object -First 20 | ForEach-Object { Write-Host "    $_" }
     }
 }
@@ -549,9 +551,9 @@ function Invoke-VerifyWizard {
     $backup = Select-Backup
     if (-not $backup) { return }
     $result = Test-Backup -BackupPath $backup.Path
-    if ($result.Ok) { Write-Status OK "$($result.Checked) fichiers verifies, aucune anomalie." }
+    if ($result.Ok) { Write-Status OK "$($result.Checked) files verified, no problems found." }
     else {
-        Write-Status FAIL ('{0} fichiers manquants et {1} corrompus sur {2}.' -f $result.Missing.Count, $result.Corrupt.Count, $result.Checked)
+        Write-Status FAIL ('{0} files missing and {1} corrupt out of {2}.' -f $result.Missing.Count, $result.Corrupt.Count, $result.Checked)
         @($result.Missing) + @($result.Corrupt) | Select-Object -First 20 | ForEach-Object { Write-Host "    $_" }
     }
 }
@@ -566,60 +568,60 @@ function Invoke-RetentionWizard {
     $set = Select-BackupSet
     if (-not $set) { return }
     $keep = 0
-    if (-not [int]::TryParse((Read-Text 'Nombre de chaines completes a conserver'), [ref]$keep) -or $keep -lt 1) {
-        Write-Status WARN 'Nombre invalide.'
+    if (-not [int]::TryParse((Read-Text 'Number of full chains to keep'), [ref]$keep) -or $keep -lt 1) {
+        Write-Status WARN 'Invalid number.'
         return
     }
-    if (-not (Confirm-Phrase -Message 'Les versions plus anciennes seront supprimees definitivement.' -Phrase 'SUPPRIMER')) { return }
+    if (-not (Confirm-Phrase -Message 'Older versions will be permanently deleted.' -Phrase 'DELETE')) { return }
     $removed = @(Remove-OldBackupChains -SetPath $set -KeepChains $keep)
-    Write-Status OK "$($removed.Count) versions supprimees."
+    Write-Status OK "$($removed.Count) versions deleted."
 }
 
 function Invoke-ScheduleWizard {
     $tasks = @(Get-ScheduledTask -TaskPath '\WinToolBox\' -ErrorAction SilentlyContinue)
     if ($tasks.Count) { $tasks | Select-Object TaskName, State | Format-Table -AutoSize | Out-Host }
-    else { Write-Status INFO 'Aucune tache planifiee.' }
-    switch ((Read-Text '[A]jouter, [S]upprimer (vide pour revenir)').ToUpperInvariant()) {
+    else { Write-Status INFO 'No scheduled tasks.' }
+    switch ((Read-Text '[A]dd, [D]elete (leave blank to go back)').ToUpperInvariant()) {
         'A' {
-            $name = Read-Text 'Nom de la tache'
-            $source = Read-Text 'Dossier a sauvegarder'
-            $destination = Read-Text 'Destination locale ou disque externe'
-            $time = Read-Text 'Heure (HH:mm)'
-            $frequency = if ((Read-Text '[Q]uotidienne ou [H]ebdomadaire') -ieq 'H') { 'Weekly' } else { 'Daily' }
-            Write-Status INFO 'Windows va demander de confirmer le compte si necessaire.'
+            $name = Read-Text 'Task name'
+            $source = Read-Text 'Folder to back up'
+            $destination = Read-Text 'Local or external drive destination'
+            $time = Read-Text 'Time (HH:mm)'
+            $frequency = if ((Read-Text '[D]aily or [W]eekly') -ieq 'W') { 'Weekly' } else { 'Daily' }
+            Write-Status INFO 'Windows will ask you to confirm the account if necessary.'
             Register-BackupSchedule -Name $name -Source $source -Destination $destination -Time $time -Frequency $frequency
-            Write-Status OK "Tache '$name' creee : une complete toutes les 7 executions, 4 chaines conservees."
+            Write-Status OK "Task '$name' created: one full backup every 7 runs, 4 chains kept."
         }
-        'S' {
+        'D' {
             $task = Select-FromList -Items $tasks -Format { param($t) $t.TaskName }
-            if ($task -and (Confirm-Action "Supprimer la tache $($task.TaskName) ?")) {
+            if ($task -and (Confirm-Action "Delete task $($task.TaskName)?")) {
                 Unregister-ScheduledTask -InputObject $task -Confirm:$false
-                Write-Status OK 'Tache supprimee. Les sauvegardes existantes sont conservees.'
+                Write-Status OK 'Task deleted. Existing backups are kept.'
             }
         }
     }
 }
 
 function Invoke-SystemImageWizard {
-    Write-Status INFO "L'image se restaure depuis l'environnement de recuperation Windows."
-    $target = (Read-Text 'Lecteur cible, par exemple E:').ToUpperInvariant()
-    if ($target -and (Confirm-Action "Creer une image systeme sur $target ?")) { Start-SystemImageBackup -TargetDrive $target }
+    Write-Status INFO "The image is restored from the Windows Recovery Environment."
+    $target = (Read-Text 'Target drive, for example E:').ToUpperInvariant()
+    if ($target -and (Confirm-Action "Create a system image on ${target}?")) { Start-SystemImageBackup -TargetDrive $target }
 }
 
 function Invoke-RestorePoint {
     Checkpoint-Computer -Description "WinToolBox $(Get-Date -Format 'yyyy-MM-dd HH:mm')" -RestorePointType MODIFY_SETTINGS
-    Write-Status OK 'Demande de point de restauration envoyee (Windows limite la frequence a un par 24 h).'
+    Write-Status OK 'Restore point requested (Windows limits this to one every 24 hours).'
 }
 
 function Show-BackupMenu {
-    Show-Menu -Title 'Sauvegarde et restauration' -Items @(
-        @{ Section = 'FICHIERS'; Key = '1'; Label = 'Nouvelle sauvegarde'; Action = { Invoke-BackupWizard } }
-        @{ Section = 'FICHIERS'; Key = '2'; Label = 'Restaurer une version'; Action = { Invoke-RestoreWizard } }
-        @{ Section = 'FICHIERS'; Key = '3'; Label = 'Verifier une version'; Action = { Invoke-VerifyWizard } }
-        @{ Section = 'FICHIERS'; Key = '4'; Label = 'Lister les versions'; Action = { Show-BackupList } }
-        @{ Section = 'FICHIERS'; Key = '5'; Label = 'Supprimer les anciennes versions'; Action = { Invoke-RetentionWizard } }
-        @{ Section = 'AUTOMATISATION'; Key = '6'; Label = 'Taches planifiees'; Admin = $true; Action = { Invoke-ScheduleWizard } }
-        @{ Section = 'SYSTEME'; Key = '7'; Label = 'Image systeme complete'; Admin = $true; Action = { Invoke-SystemImageWizard } }
-        @{ Section = 'SYSTEME'; Key = '8'; Label = 'Point de restauration'; Admin = $true; Action = { Invoke-RestorePoint } }
+    Show-Menu -Title 'Backup and restore' -Items @(
+        @{ Section = 'FILES'; Key = '1'; Label = 'New backup'; Action = { Invoke-BackupWizard } }
+        @{ Section = 'FILES'; Key = '2'; Label = 'Restore a version'; Action = { Invoke-RestoreWizard } }
+        @{ Section = 'FILES'; Key = '3'; Label = 'Verify a version'; Action = { Invoke-VerifyWizard } }
+        @{ Section = 'FILES'; Key = '4'; Label = 'List versions'; Action = { Show-BackupList } }
+        @{ Section = 'FILES'; Key = '5'; Label = 'Delete old versions'; Action = { Invoke-RetentionWizard } }
+        @{ Section = 'AUTOMATION'; Key = '6'; Label = 'Scheduled tasks'; Admin = $true; Action = { Invoke-ScheduleWizard } }
+        @{ Section = 'SYSTEM'; Key = '7'; Label = 'Full system image'; Admin = $true; Action = { Invoke-SystemImageWizard } }
+        @{ Section = 'SYSTEM'; Key = '8'; Label = 'Restore point'; Admin = $true; Action = { Invoke-RestorePoint } }
     )
 }
