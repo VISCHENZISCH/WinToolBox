@@ -90,7 +90,7 @@ function Show-LiveConnections {
     Write-Status INFO 'Refreshing every 2 seconds.'
     while ($true) {
         $processes = Get-ProcessNameMap
-        Clear-Host
+        Clear-Screen
         Write-Title 'Active connections (Q to go back)'
         Write-Table -Empty 'No active connections.' -Rows @(Get-NetTCPConnection -State Established | Where-Object { $_.RemoteAddress -notin '127.0.0.1', '::1' } |
                 Select-Object @{ n = 'Process'; e = { $processes[[int]$_.OwningProcess] } }, LocalPort, RemoteAddress, RemotePort |

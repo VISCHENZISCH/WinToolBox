@@ -68,7 +68,7 @@ Describe 'Display' {
         @(Format-TextTable -Rows @()).Count | Should -Be 0
     }
     It 'draws a menu, shows the path of nested menus and restores it on exit' {
-        Mock Clear-Host { }
+        Mock Clear-Screen { }
         Mock Read-Host { 'q' }
         $script:seen = $null
         Mock Write-Title { $script:seen = $Text }
@@ -77,7 +77,7 @@ Describe 'Display' {
         $script:MenuPath.Count | Should -Be 0
     }
     It 'names the menu path above the result of an action' {
-        Mock Clear-Host { }
+        Mock Clear-Screen { }
         Mock Read-Host { '' }
         $script:seen = $null
         Mock Write-Title { $script:seen = $Text }
@@ -85,6 +85,13 @@ Describe 'Display' {
         try { Invoke-MenuAction -Item @{ Key = '1'; Label = 'One'; Action = { } } }
         finally { $script:MenuPath.Clear() }
         $script:seen | Should -Be 'Main > One'
+    }
+    It 'clears the screen only through Clear-Screen, because Clear-Host can leave old text behind' {
+        $src = [IO.Path]::GetFullPath([IO.Path]::Combine($PSScriptRoot, '..', 'src'))
+        $uses = @(Get-ChildItem -Path $src -Recurse -Filter '*.ps1' | Select-String -Pattern '^\s*(catch \{ )?Clear-Host\b')
+        $uses.Count | Should -Be 1
+        $uses[0].Filename | Should -Be 'Common.ps1'
+        $uses[0].Line | Should -Match 'catch'
     }
     It 'no longer uses Format-Table, whose rule is made of dashes' {
         $src = [IO.Path]::GetFullPath([IO.Path]::Combine($PSScriptRoot, '..', 'src'))

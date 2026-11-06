@@ -64,6 +64,13 @@ function ConvertTo-BytesFromGb {
     return [long]($value * 1GB)
 }
 
+# Clear-Host was seen moving the cursor home without erasing, so new text landed on top of the
+# previous screen. [Console]::Clear() erases the whole buffer directly; it throws without a real console.
+function Clear-Screen {
+    try { [Console]::Clear() }
+    catch { Clear-Host }
+}
+
 function Write-Separator {
     Write-Host ('  ' + ('*' * $script:RuleWidth)) -ForegroundColor DarkGray
 }
@@ -223,7 +230,7 @@ function Invoke-MenuAction {
     param([Parameter(Mandatory)][hashtable]$Item)
     # Each result starts on a clean screen that says where it comes from.
     if (-not $Item.Submenu) {
-        Clear-Host
+        Clear-Screen
         Write-Title ((@($script:MenuPath) + $Item.Label) -join ' > ')
     }
     if ($Item.Admin -and -not (Test-IsAdmin)) {
@@ -255,7 +262,7 @@ function Show-Menu {
         $labelWidth = ($Items | ForEach-Object { $_.Label.Length } | Measure-Object -Maximum).Maximum
         while ($true) {
             $isAdmin = Test-IsAdmin
-            Clear-Host
+            Clear-Screen
             Write-Title ($script:MenuPath -join ' > ')
             if ($Header) { & $Header }
             $section = $null
