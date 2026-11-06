@@ -16,22 +16,23 @@ function Show-SystemInfo {
         'Memory'     = '{0} free of {1}' -f (Format-Bytes ($os.FreePhysicalMemory * 1KB)), (Format-Bytes $computer.TotalPhysicalMemory)
         'Last boot'  = '{0:yyyy-MM-dd HH:mm} (up {1} d {2} h)' -f $os.LastBootUpTime, $uptime.Days, $uptime.Hours
     }
-    foreach ($key in $summary.Keys) { Write-Host ('   {0,-14} {1}' -f $key, $summary[$key]) }
+    Write-Details $summary
 
-    Write-Host ''
-    Get-CimInstance -ClassName Win32_LogicalDisk -Filter 'DriveType=3' | Select-Object DeviceID, VolumeName, FileSystem,
-    @{ n = 'Free'; e = { Format-Bytes $_.FreeSpace } },
-    @{ n = 'Size'; e = { Format-Bytes $_.Size } } | Format-Table -AutoSize | Out-Host
+    Write-Section 'Local drives'
+    Write-Table -Rows @(Get-CimInstance -ClassName Win32_LogicalDisk -Filter 'DriveType=3' | Select-Object @{ n = 'Drive'; e = { $_.DeviceID } },
+        @{ n = 'Label'; e = { $_.VolumeName } }, @{ n = 'Format'; e = { $_.FileSystem } },
+        @{ n = 'Free'; e = { Format-Bytes $_.FreeSpace } },
+        @{ n = 'Size'; e = { Format-Bytes $_.Size } })
 }
 
 function Show-TopProcesses {
-    Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 15 Name, Id,
-    @{ n = 'Memory'; e = { Format-Bytes $_.WorkingSet64 } },
-    @{ n = 'CPU (s)'; e = { [math]::Round($_.CPU, 1) } } | Format-Table -AutoSize | Out-Host
+    Write-Table -Rows @(Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 15 Name, Id,
+        @{ n = 'Memory'; e = { Format-Bytes $_.WorkingSet64 } },
+        @{ n = 'CPU (s)'; e = { [math]::Round($_.CPU, 1) } })
 }
 
 function Show-StartupPrograms {
-    Get-CimInstance -ClassName Win32_StartupCommand | Sort-Object Name | Select-Object Name, User, Location, Command | Format-Table -AutoSize -Wrap | Out-Host
+    Write-Table -Empty 'No startup programs.' -Rows @(Get-CimInstance -ClassName Win32_StartupCommand | Sort-Object Name | Select-Object Name, User, Location, Command)
 }
 
 function Show-FailedServices {
@@ -40,14 +41,14 @@ function Show-FailedServices {
         Write-Status OK 'No failed automatic services.'
         return
     }
-    $services | Select-Object Name, DisplayName, ExitCode | Format-Table -AutoSize | Out-Host
+    Write-Table -Rows @($services | Select-Object Name, DisplayName, ExitCode)
 }
 
 function Show-SystemMenu {
     Show-Menu -Title 'System information' -Items @(
-        @{ Key = '1'; Label = 'System summary'; Action = { Show-SystemInfo } }
-        @{ Key = '2'; Label = 'Top processes by memory'; Action = { Show-TopProcesses } }
-        @{ Key = '3'; Label = 'Startup programs'; Action = { Show-StartupPrograms } }
-        @{ Key = '4'; Label = 'Failed automatic services'; Action = { Show-FailedServices } }
+        @{ Section = 'OVERVIEW'; Key = '1'; Label = 'System summary'; Hint = 'hardware, memory, drives'; Action = { Show-SystemInfo } }
+        @{ Section = 'ACTIVITY'; Key = '2'; Label = 'Top processes by memory'; Action = { Show-TopProcesses } }
+        @{ Section = 'ACTIVITY'; Key = '3'; Label = 'Startup programs'; Action = { Show-StartupPrograms } }
+        @{ Section = 'ACTIVITY'; Key = '4'; Label = 'Failed automatic services'; Action = { Show-FailedServices } }
     )
 }

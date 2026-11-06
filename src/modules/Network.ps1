@@ -27,15 +27,17 @@ function Get-ProcessNameMap {
 }
 
 function Show-NetworkInterfaces {
-    Get-NetIPConfiguration | ForEach-Object {
+    Write-Section 'Addresses'
+    Write-Table -Rows @(Get-NetIPConfiguration | ForEach-Object {
         [pscustomobject]@{
             Interface  = $_.InterfaceAlias
             IPv4       = @($_.IPv4Address | ForEach-Object { $_.IPAddress }) -join ', '
             Gateway    = @($_.IPv4DefaultGateway | ForEach-Object { $_.NextHop }) -join ', '
             DNS        = @($_.DNSServer | Where-Object { $_.AddressFamily -eq 2 } | ForEach-Object { $_.ServerAddresses }) -join ', '
         }
-    } | Format-Table -AutoSize | Out-Host
-    Get-NetAdapter | Select-Object Name, Status, LinkSpeed, MacAddress | Format-Table -AutoSize | Out-Host
+    })
+    Write-Section 'Adapters'
+    Write-Table -Rows @(Get-NetAdapter | Select-Object Name, Status, LinkSpeed, MacAddress)
 }
 
 # A TCP test, because many networks block ping without blocking the Internet.
@@ -59,18 +61,29 @@ function Show-Connectivity {
     else { Write-Status FAIL 'Internet unreachable.' }
 }
 
-function Show-ListeningPorts {
-    $processes = Get-ProcessNameMap
-    Get-NetTCPConnection -State Listen | Sort-Object LocalPort -Unique | ForEach-Object {
+# One row per port and address: the same port can listen on loopback and on the network, and
+# keeping only one of them could hide the exposed one and its alert.
+function Get-ListeningPortRows {
+    param([object[]]$Connections, [hashtable]$Processes = @{})
+    @($Connections) | Where-Object { $_ } | Sort-Object LocalPort, LocalAddress -Unique | ForEach-Object {
         $exposed = $_.LocalAddress -notin '127.0.0.1', '::1'
         $label = Get-SensitivePortLabel -Port $_.LocalPort
         [pscustomobject]@{
-            Port      = $_.LocalPort
-            Address   = $_.LocalAddress
-            Process   = $processes[[int]$_.OwningProcess]
-            Alert     = if ($label -and $exposed) { "SENSITIVE: $label" } else { '' }
+            Port    = $_.LocalPort
+            Address = $_.LocalAddress
+            Process = $Processes[[int]$_.OwningProcess]
+            Alert   = if ($label -and $exposed) { "SENSITIVE: $label" } else { '' }
         }
-    } | Format-Table -AutoSize | Out-Host
+    }
+}
+
+function Show-ListeningPorts {
+    $rows = @(Get-ListeningPortRows -Connections @(Get-NetTCPConnection -State Listen) -Processes (Get-ProcessNameMap))
+    Write-Table -Rows $rows -Empty 'No listening ports.'
+    $sensitive = @($rows | Where-Object { $_.Alert }).Count
+    Write-Host ''
+    if ($sensitive) { Write-Status WARN "$sensitive sensitive ports are reachable from the network." }
+    else { Write-Status OK 'No sensitive port is reachable from the network.' }
 }
 
 function Show-LiveConnections {
@@ -79,9 +92,9 @@ function Show-LiveConnections {
         $processes = Get-ProcessNameMap
         Clear-Host
         Write-Title 'Active connections (Q to go back)'
-        Get-NetTCPConnection -State Established | Where-Object { $_.RemoteAddress -notin '127.0.0.1', '::1' } |
-            Select-Object @{ n = 'Process'; e = { $processes[[int]$_.OwningProcess] } }, LocalPort, RemoteAddress, RemotePort |
-            Sort-Object Process | Format-Table -AutoSize | Out-Host
+        Write-Table -Empty 'No active connections.' -Rows @(Get-NetTCPConnection -State Established | Where-Object { $_.RemoteAddress -notin '127.0.0.1', '::1' } |
+                Select-Object @{ n = 'Process'; e = { $processes[[int]$_.OwningProcess] } }, LocalPort, RemoteAddress, RemotePort |
+                Sort-Object Process)
         $deadline = (Get-Date).AddSeconds(2)
         while ((Get-Date) -lt $deadline) {
             if ([Console]::KeyAvailable -and [Console]::ReadKey($true).Key -eq 'Q') { return }

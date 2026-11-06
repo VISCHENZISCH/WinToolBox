@@ -105,14 +105,29 @@ function Invoke-SecurityAudit {
 
 function Show-SecurityAudit {
     $findings = @(Invoke-SecurityAudit)
-    foreach ($finding in $findings) { Write-Status $finding.Status ('{0,-38} {1}' -f $finding.Check, $finding.Detail) }
+    # Most urgent first, so that problems are not lost among the checks that passed.
+    $groups = @(
+        @{ Status = 'FAIL'; Title = 'To fix' }
+        @{ Status = 'WARN'; Title = 'To review' }
+        @{ Status = 'OK'; Title = 'Passed' }
+        @{ Status = 'INFO'; Title = 'For information' }
+    )
+    $width = ($findings | ForEach-Object { $_.Check.Length } | Measure-Object -Maximum).Maximum
+    foreach ($group in $groups) {
+        $members = @($findings | Where-Object { $_.Status -eq $group.Status })
+        if ($members.Count -eq 0) { continue }
+        Write-Section ('{0} ({1})' -f $group.Title, $members.Count)
+        foreach ($finding in $members) { Write-Status $finding.Status ('{0}  {1}' -f $finding.Check.PadRight($width), $finding.Detail) }
+    }
     $problems = @($findings | Where-Object { $_.Status -in 'WARN', 'FAIL' }).Count
-    Write-Host ''
+
+    Write-Section 'Result'
     if ($problems) { Write-Status WARN "$problems items to review." }
     else { Write-Status OK 'No problems found on the items checked.' }
 
     $report = New-ReportPath -Prefix 'audit'
-    $findings | Format-Table -AutoSize -Wrap | Out-File -LiteralPath $report -Encoding utf8 -Width 160
+    $sorted = foreach ($group in $groups) { $findings | Where-Object { $_.Status -eq $group.Status } }
+    Format-TextTable -Rows @($sorted) -Width 160 | Out-File -LiteralPath $report -Encoding utf8
     Write-Log -Message "Security audit: $problems items to review."
     Write-Status INFO "Report: $report"
 }
@@ -122,7 +137,8 @@ function Show-AppLog {
         Write-Status INFO 'The log is empty.'
         return
     }
-    Get-Content -LiteralPath $script:LogFile -Tail 50 | Out-Host
+    # The log is UTF-8 without a BOM, which Windows PowerShell would otherwise read as ANSI.
+    Get-Content -LiteralPath $script:LogFile -Tail 50 -Encoding UTF8 | Out-Host
 }
 
 function Invoke-AppLogClear {
@@ -138,8 +154,8 @@ function Invoke-AppLogClear {
 
 function Show-SecurityMenu {
     Show-Menu -Title 'Security and logs' -Items @(
-        @{ Section = 'SECURITY'; Key = '1'; Label = 'Security audit'; Action = { Show-SecurityAudit } }
-        @{ Section = 'LOGS'; Key = '2'; Label = 'View the WinToolBox log'; Action = { Show-AppLog } }
-        @{ Section = 'LOGS'; Key = '3'; Label = 'Clear the WinToolBox log'; Action = { Invoke-AppLogClear } }
+        @{ Section = 'SECURITY'; Key = '1'; Label = 'Security audit'; Hint = 'read-only, saves a report'; Action = { Show-SecurityAudit } }
+        @{ Section = 'LOGS'; Key = '2'; Label = 'View the WinToolBox log'; Hint = 'last 50 lines'; Action = { Show-AppLog } }
+        @{ Section = 'LOGS'; Key = '3'; Label = 'Clear the WinToolBox log'; Danger = $true; Action = { Invoke-AppLogClear } }
     )
 }

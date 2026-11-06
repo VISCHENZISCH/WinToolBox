@@ -5,7 +5,8 @@
 .DESCRIPTION
     Without parameters, opens the interactive menu. With -Task Backup, runs a
     backup without a UI (used by scheduled tasks).
-    -Task Backup exit codes: 0 success, 1 failure, 2 partial backup.
+    -Task Backup exit codes: 0 success, 1 failure, 2 partial backup or source that
+    suddenly lost most of its files.
 #>
 [CmdletBinding()]
 param(
@@ -32,7 +33,7 @@ Initialize-App -Root $script:AppRoot
 if ($Task -eq 'Backup') {
     try {
         $result = New-Backup -Source $Source -Destination $Destination -Mode $Mode -FullEvery $FullEvery -KeepChains $KeepChains
-        if ($result.Status -eq 'Partial') { exit 2 }
+        if ($result.Status -eq 'Partial' -or $result.Shrunk) { exit 2 }
         exit 0
     }
     catch {
@@ -58,15 +59,19 @@ $header = {
     $role = if (Test-IsAdmin) { 'administrator' } else { 'standard' }
     Write-Host ('  {0}  |  rights: {1}  |  {2} {3} free of {4}' -f $env:COMPUTERNAME, $role, $env:SystemDrive,
         (Format-Bytes $drive.AvailableFreeSpace), (Format-Bytes $drive.TotalSize)) -ForegroundColor DarkGray
+    foreach ($problem in $script:TaskProblems) { Write-Status WARN "Scheduled task '$($problem.Name)': $($problem.LastResult)." }
 }
 
+# Read once: scheduled tasks run unattended, so this is where their failures become visible.
+$script:TaskProblems = @(Get-ScheduledBackupProblems)
+
 Show-Menu -Title "WinToolBox $script:AppVersion" -ExitLabel 'Quit' -Header $header -Items @(
-    @{ Section = 'DATA'; Key = '1'; Label = 'Backup and restore'; Submenu = $true; Action = { Show-BackupMenu } }
-    @{ Section = 'DATA'; Key = '2'; Label = 'Disks and partitions'; Submenu = $true; Action = { Show-DiskMenu } }
-    @{ Section = 'MAINTENANCE'; Key = '3'; Label = 'Cleanup and repair'; Submenu = $true; Action = { Show-MaintenanceMenu } }
-    @{ Section = 'ADMINISTRATION'; Key = '4'; Label = 'System information'; Submenu = $true; Action = { Show-SystemMenu } }
-    @{ Section = 'ADMINISTRATION'; Key = '5'; Label = 'Network'; Submenu = $true; Action = { Show-NetworkMenu } }
-    @{ Section = 'ADMINISTRATION'; Key = '6'; Label = 'Users and groups'; Submenu = $true; Action = { Show-UsersMenu } }
-    @{ Section = 'PROTECTION'; Key = '7'; Label = 'Security and logs'; Submenu = $true; Action = { Show-SecurityMenu } }
+    @{ Section = 'DATA PROTECTION'; Key = '1'; Label = 'Backup and restore'; Hint = 'versions, verification, schedules, system image'; Submenu = $true; Action = { Show-BackupMenu } }
+    @{ Section = 'STORAGE'; Key = '2'; Label = 'Disks and partitions'; Hint = 'health, scan, create, resize, format'; Submenu = $true; Action = { Show-DiskMenu } }
+    @{ Section = 'STORAGE'; Key = '3'; Label = 'Cleanup and repair'; Hint = 'temporary files, DISM, SFC'; Submenu = $true; Action = { Show-MaintenanceMenu } }
+    @{ Section = 'SYSTEM'; Key = '4'; Label = 'System information'; Hint = 'hardware, processes, startup, services'; Submenu = $true; Action = { Show-SystemMenu } }
+    @{ Section = 'SYSTEM'; Key = '5'; Label = 'Users and groups'; Hint = 'local accounts and group members'; Submenu = $true; Action = { Show-UsersMenu } }
+    @{ Section = 'NETWORK AND SECURITY'; Key = '6'; Label = 'Network'; Hint = 'addresses, connection test, ports, DNS'; Submenu = $true; Action = { Show-NetworkMenu } }
+    @{ Section = 'NETWORK AND SECURITY'; Key = '7'; Label = 'Security and logs'; Hint = 'read-only audit, tool log'; Submenu = $true; Action = { Show-SecurityMenu } }
 )
 exit 0

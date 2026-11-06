@@ -9,5 +9,6 @@ if not exist "%PS_EXE%" (
 )
 "%PS_EXE%" -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0src\WinToolBox.ps1" %*
 set "RC=%ERRORLEVEL%"
-if not "%RC%"=="0" pause
+rem Only the interactive menu pauses: with arguments, a calling script must not hang.
+if not "%RC%"=="0" if "%~1"=="" pause
 exit /b %RC%

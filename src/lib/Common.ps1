@@ -3,6 +3,9 @@
 $script:LogFile = $null
 $script:ReportDir = $null
 $script:MaxLogBytes = 5MB
+$script:RuleWidth = 72
+$script:MenuPath = New-Object 'System.Collections.Generic.List[string]'
+$script:LongPathSupported = $null
 
 function Test-IsWindows { return ($env:OS -eq 'Windows_NT') }
 
@@ -53,17 +56,118 @@ function Format-Bytes {
 function ConvertTo-BytesFromGb {
     param([string]$Text)
     $value = 0.0
+    # "1,000" could mean 1 or 1000: an ambiguous size must not be guessed for a disk operation.
+    if ("$Text".Trim() -match '^\d{1,3}([.,]\d{3})+$') { return $null }
     $normalized = "$Text".Trim().Replace(',', '.')
     $ok = [double]::TryParse($normalized, [Globalization.NumberStyles]::Float, [Globalization.CultureInfo]::InvariantCulture, [ref]$value)
     if (-not $ok -or $value -le 0) { return $null }
     return [long]($value * 1GB)
 }
 
+function Write-Separator {
+    Write-Host ('  ' + ('*' * $script:RuleWidth)) -ForegroundColor DarkGray
+}
+
 function Write-Title {
     param([string]$Text)
     Write-Host ''
+    Write-Separator
     Write-Host "  $Text" -ForegroundColor White
-    Write-Host ('  ' + ('-' * 72)) -ForegroundColor DarkGray
+    Write-Separator
+}
+
+function Write-Section {
+    param([string]$Text)
+    Write-Host ''
+    Write-Host "  *** $Text" -ForegroundColor Cyan
+}
+
+function Get-ConsoleWidth {
+    try {
+        $width = [Console]::WindowWidth - 4
+        if ($width -ge 40) { return $width }
+    }
+    catch { Write-Verbose 'No console: using the default width.' }
+    return 116
+}
+
+function Format-Cell {
+    param($Value)
+    if ($null -eq $Value) { return '' }
+    if ($Value -is [bool]) { return $(if ($Value) { 'Yes' } else { 'No' }) }
+    if ($Value -is [datetime]) { return $Value.ToString('yyyy-MM-dd HH:mm') }
+    return ("$Value" -replace '[\x00-\x1F]', ' ').Trim()
+}
+
+# Renders objects as text lines: header, a rule of stars, then rows. PowerShell's own table
+# format draws a rule of dashes that cannot be changed. When the width is too small, the widest columns are cut first.
+function Format-TextTable {
+    param([object[]]$Rows, [int]$Width = 116)
+    $Rows = @($Rows | Where-Object { $null -ne $_ })
+    if ($Rows.Count -eq 0) { return @() }
+    $columns = @($Rows[0].PSObject.Properties | ForEach-Object { $_.Name })
+    $widths = @($columns | ForEach-Object { $_.Length })
+    $cells = New-Object 'System.Collections.Generic.List[object]'
+    foreach ($row in $Rows) {
+        $line = New-Object 'string[]' $columns.Count
+        for ($i = 0; $i -lt $columns.Count; $i++) {
+            $line[$i] = Format-Cell $row.($columns[$i])
+            if ($line[$i].Length -gt $widths[$i]) { $widths[$i] = $line[$i].Length }
+        }
+        $cells.Add($line)
+    }
+
+    $available = $Width - (2 * ($columns.Count - 1))
+    while (($widths | Measure-Object -Sum).Sum -gt $available) {
+        $widest = 0
+        for ($i = 1; $i -lt $widths.Count; $i++) { if ($widths[$i] -gt $widths[$widest]) { $widest = $i } }
+        if ($widths[$widest] -le 6) { break }
+        $widths[$widest]--
+    }
+
+    $render = {
+        param([string[]]$Values)
+        $parts = for ($i = 0; $i -lt $Values.Count; $i++) {
+            $text = $Values[$i]
+            if ($text.Length -gt $widths[$i]) { $text = $text.Substring(0, $widths[$i] - 3) + '...' }
+            $text.PadRight($widths[$i])
+        }
+        return ($parts -join '  ').TrimEnd()
+    }
+    $lines = New-Object 'System.Collections.Generic.List[string]'
+    $lines.Add((& $render $columns))
+    $lines.Add((& $render @($widths | ForEach-Object { '*' * $_ })))
+    foreach ($line in $cells) { $lines.Add((& $render $line)) }
+    return $lines.ToArray()
+}
+
+function Write-Table {
+    param([object[]]$Rows, [string]$Empty = 'Nothing to show.')
+    $lines = @(Format-TextTable -Rows $Rows -Width (Get-ConsoleWidth))
+    if ($lines.Count -eq 0) {
+        Write-Status INFO $Empty
+        return
+    }
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $color = switch ($i) { 0 { 'White' } 1 { 'DarkGray' } default { 'Gray' } }
+        Write-Host "   $($lines[$i])" -ForegroundColor $color
+    }
+}
+
+# Aligned "name  value" lines, for results that describe a single thing.
+function Write-Details {
+    param([Parameter(Mandatory)][Collections.IDictionary]$Items)
+    $width = ($Items.Keys | ForEach-Object { "$_".Length } | Measure-Object -Maximum).Maximum
+    foreach ($key in $Items.Keys) {
+        Write-Host ("   {0}  {1}" -f "$key".PadRight($width), (Format-Cell $Items[$key]))
+    }
+}
+
+function Write-PathList {
+    param([object[]]$Paths, [int]$Limit = 20)
+    $Paths = @($Paths)
+    $Paths | Select-Object -First $Limit | ForEach-Object { Write-Host "    $_" }
+    if ($Paths.Count -gt $Limit) { Write-Host "    ... and $($Paths.Count - $Limit) more" -ForegroundColor DarkGray }
 }
 
 function Write-Status {
@@ -117,6 +221,11 @@ function Select-FromList {
 
 function Invoke-MenuAction {
     param([Parameter(Mandatory)][hashtable]$Item)
+    # Each result starts on a clean screen that says where it comes from.
+    if (-not $Item.Submenu) {
+        Clear-Host
+        Write-Title ((@($script:MenuPath) + $Item.Label) -join ' > ')
+    }
     if ($Item.Admin -and -not (Test-IsAdmin)) {
         Write-Status WARN 'This action requires administrator rights.'
         Wait-Key
@@ -132,8 +241,8 @@ function Invoke-MenuAction {
     if (-not $Item.Submenu) { Wait-Key }
 }
 
-# Data-driven menu. Each item: Key, Label, Action, and optionally
-# Section, Admin (rights required) and Submenu (no pause on return).
+# Data-driven menu. Each item: Key, Label, Action, and optionally Section, Hint (short
+# description), Admin (rights required), Danger (destroys data) and Submenu (no pause on return).
 function Show-Menu {
     param(
         [Parameter(Mandatory)][string]$Title,
@@ -141,36 +250,43 @@ function Show-Menu {
         [string]$ExitLabel = 'Back',
         [scriptblock]$Header
     )
-    while ($true) {
-        $isAdmin = Test-IsAdmin
-        Clear-Host
-        Write-Title $Title
-        if ($Header) { & $Header }
-        $section = $null
-        foreach ($item in $Items) {
-            if ($item.Section -and $item.Section -ne $section) {
-                $section = $item.Section
-                Write-Host ''
-                Write-Host "  $section" -ForegroundColor Cyan
+    $script:MenuPath.Add($Title)
+    try {
+        $labelWidth = ($Items | ForEach-Object { $_.Label.Length } | Measure-Object -Maximum).Maximum
+        while ($true) {
+            $isAdmin = Test-IsAdmin
+            Clear-Host
+            Write-Title ($script:MenuPath -join ' > ')
+            if ($Header) { & $Header }
+            $section = $null
+            foreach ($item in $Items) {
+                if ($item.Section -and $item.Section -ne $section) {
+                    $section = $item.Section
+                    Write-Section $section
+                }
+                $locked = $item.Admin -and -not $isAdmin
+                $color = if ($locked) { 'DarkGray' } elseif ($item.Danger) { 'Yellow' } else { 'Gray' }
+                Write-Host ('   [{0}] {1}' -f $item.Key, $item.Label.PadRight($labelWidth)) -ForegroundColor $color -NoNewline
+                $note = @($(if ($locked) { '(admin required)' }), $item.Hint) | Where-Object { $_ }
+                Write-Host ('  ' + ($note -join ' ')) -ForegroundColor DarkGray
             }
-            $suffix = if ($item.Admin -and -not $isAdmin) { '  (admin required)' } else { '' }
-            Write-Host ('   [{0}] {1}{2}' -f $item.Key, $item.Label, $suffix)
+            Write-Host ''
+            Write-Separator
+            Write-Host "   [Q] $ExitLabel"
+            Write-Host ''
+            $choice = Read-Text 'Choice'
+            if ($choice -ieq 'Q') { return }
+            if (-not $choice) { continue }
+            $selected = $Items | Where-Object { $_.Key -ieq $choice } | Select-Object -First 1
+            if (-not $selected) {
+                Write-Status WARN "Invalid option '$choice'."
+                Start-Sleep -Seconds 1
+                continue
+            }
+            Invoke-MenuAction -Item $selected
         }
-        Write-Host ''
-        Write-Host "   [Q] $ExitLabel"
-        Write-Host ''
-        $choice = Read-Text 'Choice'
-        if ($choice -ieq 'Q') { return }
-        if (-not $choice) { continue }
-        $selected = $Items | Where-Object { $_.Key -ieq $choice } | Select-Object -First 1
-        if (-not $selected) {
-            Write-Status WARN "Invalid option '$choice'."
-            Start-Sleep -Seconds 1
-            continue
-        }
-        Write-Host ''
-        Invoke-MenuAction -Item $selected
     }
+    finally { $script:MenuPath.RemoveAt($script:MenuPath.Count - 1) }
 }
 
 function Resolve-FullPath {
@@ -190,10 +306,26 @@ function Test-PathInside {
     return $childNorm.StartsWith($parentNorm, [StringComparison]::OrdinalIgnoreCase)
 }
 
-# \\?\ prefix to get past the 260-character limit in .NET calls.
+# Some .NET configurations reject the \\?\ prefix or drop it from FullName, and either would make
+# every path fail. So it is tested once on a real folder and only used when it fully works.
+function Test-LongPathSupport {
+    if ($null -eq $script:LongPathSupported) {
+        try {
+            $probe = [IO.DirectoryInfo]::new('\\?\' + $env:SystemRoot + '\')
+            $child = $probe.GetFileSystemInfos() | Select-Object -First 1
+            $script:LongPathSupported = $probe.FullName.StartsWith('\\?\') -and $child.FullName.StartsWith('\\?\')
+        }
+        catch { $script:LongPathSupported = $false }
+        if (-not $script:LongPathSupported) { Write-Log -Level WARN -Message 'The \\?\ prefix is not usable here: paths over 260 characters will be reported as errors.' }
+    }
+    return $script:LongPathSupported
+}
+
+# \\?\ prefix to get past the 260-character limit in .NET calls, when it is available.
 function ConvertTo-LongPath {
     param([Parameter(Mandatory)][string]$Path)
     if (-not (Test-IsWindows) -or $Path.StartsWith('\\?\')) { return $Path }
+    if (-not (Test-LongPathSupport)) { return $Path }
     if ($Path.StartsWith('\\')) { return '\\?\UNC\' + $Path.Substring(2) }
     return '\\?\' + $Path
 }

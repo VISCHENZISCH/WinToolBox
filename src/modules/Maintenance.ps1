@@ -60,10 +60,19 @@ function Get-RecycleBinSize {
     catch { return [long]0 }
 }
 
+# Measured after the fact: Clear-RecycleBin can fail silently, so success is never assumed.
+function Invoke-RecycleBinClear {
+    param([Parameter(Mandatory)][long]$SizeBefore)
+    Clear-RecycleBin -Force -ErrorAction SilentlyContinue
+    $left = [long](Get-RecycleBinSize)
+    return [pscustomobject]@{ Freed = [math]::Max([long]0, $SizeBefore - $left); Left = $left }
+}
+
 function Invoke-CleanupWizard {
     $isAdmin = Test-IsAdmin
     $rows = New-Object 'System.Collections.Generic.List[object]'
     Write-Status INFO 'Scanning, nothing is deleted at this stage.'
+    Write-Section 'What can be deleted'
     foreach ($target in Get-CleanupTargets) {
         if ($target.Admin -and -not $isAdmin) { continue }
         $candidates = @(Get-CleanupCandidates -Root $target.Root -MinAgeDays $target.MinAgeDays -Filter $target.Filter)
@@ -75,7 +84,11 @@ function Invoke-CleanupWizard {
     for ($i = 0; $i -lt $rows.Count; $i++) {
         Write-Host ('   [{0}] {1,-38} {2,10}' -f ($i + 1), $rows[$i].Name, (Format-Bytes $rows[$i].Size))
     }
-    if (-not $isAdmin) { Write-Status INFO 'System caches require administrator rights.' }
+    if (-not $isAdmin) {
+        Write-Host ''
+        Write-Status INFO 'System caches require administrator rights.'
+    }
+    Write-Host ''
     $answer = Read-Text 'Numbers separated by commas, A for all, leave blank to cancel'
     if (-not $answer) { return }
 
@@ -94,11 +107,12 @@ function Invoke-CleanupWizard {
 
     $totalFreed = [long]0
     $totalLocked = 0
+    $summary = New-Object 'System.Collections.Generic.List[object]'
     foreach ($row in $selected) {
         if ($null -eq $row.Target) {
-            Clear-RecycleBin -Force -ErrorAction SilentlyContinue
-            $totalFreed += $row.Size
-            Write-Status OK "$($row.Name): emptied."
+            $bin = Invoke-RecycleBinClear -SizeBefore $row.Size
+            $totalFreed += $bin.Freed
+            $summary.Add([pscustomobject]@{ Item = $row.Name; Freed = Format-Bytes $bin.Freed; 'Files kept' = $(if ($bin.Left) { "$(Format-Bytes $bin.Left) left" } else { '0' }) })
             continue
         }
         $service = $null
@@ -114,8 +128,10 @@ function Invoke-CleanupWizard {
         }
         $totalFreed += $result.Freed
         $totalLocked += $result.Locked
-        Write-Status OK ('{0}: {1} freed, {2} files in use kept.' -f $row.Name, (Format-Bytes $result.Freed), $result.Locked)
+        $summary.Add([pscustomobject]@{ Item = $row.Name; Freed = Format-Bytes $result.Freed; 'Files kept' = $result.Locked })
     }
+    Write-Section 'Result'
+    Write-Table -Rows $summary.ToArray()
     Write-Log -Message "Cleanup: $totalFreed bytes freed, $totalLocked files kept."
     Write-Host ''
     Write-Status OK ('Total freed: {0}.' -f (Format-Bytes $totalFreed))
@@ -134,7 +150,7 @@ function Invoke-RepairCommand {
 
 function Show-MaintenanceMenu {
     Show-Menu -Title 'Cleanup and repair' -Items @(
-        @{ Section = 'CLEANUP'; Key = '1'; Label = 'Scan and clean'; Action = { Invoke-CleanupWizard } }
+        @{ Section = 'CLEANUP'; Key = '1'; Label = 'Scan and clean'; Hint = 'shows what can be deleted first'; Action = { Invoke-CleanupWizard } }
         @{ Section = 'CLEANUP'; Key = '2'; Label = 'Shrink the Windows component store'; Admin = $true; Action = { Invoke-RepairCommand -Label 'Component cleanup' -Command 'dism.exe' -Arguments '/Online', '/Cleanup-Image', '/StartComponentCleanup' } }
         @{ Section = 'REPAIR'; Key = '3'; Label = 'Repair the Windows image (DISM)'; Admin = $true; Action = { Invoke-RepairCommand -Label 'DISM repair' -Command 'dism.exe' -Arguments '/Online', '/Cleanup-Image', '/RestoreHealth' } }
         @{ Section = 'REPAIR'; Key = '4'; Label = 'Check system files (SFC)'; Admin = $true; Action = { Invoke-RepairCommand -Label 'SFC check' -Command 'sfc.exe' -Arguments '/scannow' } }

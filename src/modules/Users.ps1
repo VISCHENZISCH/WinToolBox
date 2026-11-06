@@ -29,8 +29,8 @@ function Show-LocalUsers {
         Get-LocalGroupMember -SID 'S-1-5-32-544' | ForEach-Object { $admins["$($_.SID)"] = $true }
     }
     catch { Write-Status WARN 'Administrator list unavailable.' }
-    Get-LocalUser | Sort-Object Name | Select-Object Name, Enabled, PasswordRequired, LastLogon,
-    @{ n = 'Admin'; e = { $admins.ContainsKey("$($_.SID)") } } | Format-Table -AutoSize | Out-Host
+    Write-Table -Rows @(Get-LocalUser | Sort-Object Name | Select-Object Name, Enabled, @{ n = 'Password required'; e = { $_.PasswordRequired } }, @{ n = 'Last logon'; e = { $_.LastLogon } },
+        @{ n = 'Admin'; e = { $admins.ContainsKey("$($_.SID)") } })
 }
 
 function Invoke-UserCreate {
@@ -91,10 +91,10 @@ function Invoke-UserToggle {
 }
 
 function Show-LocalGroups {
-    foreach ($group in Get-LocalGroup | Sort-Object Name) {
-        $members = @(Get-LocalGroupMember -Group $group -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
-        if ($members.Count) { Write-Host ('   {0} : {1}' -f $group.Name, ($members -join ', ')) }
-    }
+    Write-Table -Empty 'No group has members.' -Rows @(foreach ($group in Get-LocalGroup | Sort-Object Name) {
+            $members = @(Get-LocalGroupMember -Group $group -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
+            if ($members.Count) { [pscustomobject]@{ Group = $group.Name; Members = $members -join ', ' } }
+        })
 }
 
 function Invoke-GroupMembership {
@@ -121,7 +121,7 @@ function Show-UsersMenu {
         @{ Section = 'ACCOUNTS'; Key = '1'; Label = 'List accounts'; Action = { Show-LocalUsers } }
         @{ Section = 'ACCOUNTS'; Key = '2'; Label = 'Create an account'; Admin = $true; Action = { Invoke-UserCreate } }
         @{ Section = 'ACCOUNTS'; Key = '3'; Label = 'Enable or disable an account'; Admin = $true; Action = { Invoke-UserToggle } }
-        @{ Section = 'ACCOUNTS'; Key = '4'; Label = 'Delete an account'; Admin = $true; Action = { Invoke-UserDelete } }
+        @{ Section = 'ACCOUNTS'; Key = '4'; Label = 'Delete an account'; Danger = $true; Admin = $true; Action = { Invoke-UserDelete } }
         @{ Section = 'GROUPS'; Key = '5'; Label = 'List groups'; Action = { Show-LocalGroups } }
         @{ Section = 'GROUPS'; Key = '6'; Label = 'Change group members'; Admin = $true; Action = { Invoke-GroupMembership } }
     )
