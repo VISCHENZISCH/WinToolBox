@@ -128,10 +128,46 @@ function Show-DiskHealth {
 function Invoke-VolumeScan {
     $letter = Read-DriveLetter
     if (-not $letter) { return }
-    $result = Repair-Volume -DriveLetter $letter -Scan
+    try { $result = Repair-Volume -DriveLetter $letter -Scan -ErrorAction Stop }
+    catch {
+        Write-Log -Level ERROR -Message "Volume scan ${letter}: $($_.Exception.Message)"
+        Write-Status FAIL "Scan of ${letter}: failed: $($_.Exception.Message)"
+        Write-Status INFO 'An online scan needs a snapshot. "Repair offline" and "Repair with chkdsk" do not.'
+        return
+    }
     Write-Log -Message "Volume scan ${letter}: $result."
     if ("$result" -eq 'NoErrorsFound') { Write-Status OK "No errors on ${letter}:." }
-    else { Write-Status WARN "Result on ${letter}: $result. Run the repair with chkdsk $letter`: /f." }
+    else { Write-Status WARN "Result on ${letter}: $result. Use `"Repair offline`" or `"Repair with chkdsk`"." }
+}
+
+# Going offline invalidates every open file, so the targets refused are the same as for a format.
+function Invoke-VolumeOfflineRepair {
+    Write-Status INFO 'The Windows drive cannot go offline: use "Repair with chkdsk" for it.'
+    $partition = Read-PartitionSafe
+    if (-not $partition) { return }
+    $letter = $partition.DriveLetter
+    Write-PartitionSummary -Partition $partition
+    Write-Status WARN "${letter}: goes offline during the repair: programs using it lose access and unsaved work may be lost."
+    if (-not (Confirm-Action "Repair ${letter}: offline?")) { return }
+    $result = Repair-Volume -DriveLetter $letter -OfflineScanAndFix -ErrorAction Stop
+    Write-Log -Message "Offline repair ${letter}: $result."
+    if ("$result" -eq 'NoErrorsFound') { Write-Status OK "No errors on ${letter}:." }
+    else { Write-Status INFO "Result on ${letter}: $result." }
+}
+
+# Start-Process keeps chkdsk attached to the console: its Y/N questions would stay invisible in a pipeline.
+# They are left to the user because "Y" can mean either a check at restart or a forced dismount.
+function Invoke-VolumeChkdsk {
+    $letter = Read-DriveLetter
+    if (-not $letter) { return }
+    Write-Status INFO 'If the volume is in use, chkdsk asks whether to check it at the next restart.'
+    Write-Status WARN 'If it offers to force a dismount, accepting closes the files open on that volume.'
+    if (-not (Confirm-Action "Run chkdsk ${letter}: /f?")) { return }
+    $process = Start-Process -FilePath 'chkdsk.exe' -ArgumentList "${letter}:", '/f' -NoNewWindow -Wait -PassThru
+    $code = $process.ExitCode
+    Write-Log -Message "chkdsk ${letter}: /f: code $code."
+    if ($code -in 0, 1) { Write-Status OK "chkdsk finished on ${letter}: (code $code)." }
+    else { Write-Status WARN "chkdsk returned code ${code}: see its message above. A check accepted for the next restart only runs after restarting." }
 }
 
 function Invoke-VolumeOptimize {
@@ -255,10 +291,12 @@ function Show-DiskMenu {
         @{ Section = 'STATUS'; Key = '2'; Label = 'Disk health'; Hint = 'temperature, wear, errors'; Admin = $true; Action = { Show-DiskHealth } }
         @{ Section = 'MAINTENANCE'; Key = '3'; Label = 'Scan a volume'; Hint = 'read-only'; Admin = $true; Action = { Invoke-VolumeScan } }
         @{ Section = 'MAINTENANCE'; Key = '4'; Label = 'Optimize a volume'; Hint = 'TRIM or defragmentation'; Admin = $true; Action = { Invoke-VolumeOptimize } }
-        @{ Section = 'PARTITIONS'; Key = '5'; Label = 'Create a partition'; Admin = $true; Action = { Invoke-PartitionCreate } }
-        @{ Section = 'PARTITIONS'; Key = '6'; Label = 'Resize a partition'; Admin = $true; Action = { Invoke-PartitionResize } }
-        @{ Section = 'PARTITIONS'; Key = '7'; Label = 'Change a drive letter'; Admin = $true; Action = { Invoke-DriveLetterChange } }
-        @{ Section = 'IRREVERSIBLE OPERATIONS'; Key = '8'; Label = 'Format a volume'; Danger = $true; Admin = $true; Action = { Invoke-VolumeFormat } }
-        @{ Section = 'IRREVERSIBLE OPERATIONS'; Key = '9'; Label = 'Delete a partition'; Danger = $true; Admin = $true; Action = { Invoke-PartitionDelete } }
+        @{ Section = 'MAINTENANCE'; Key = '5'; Label = 'Repair offline'; Hint = 'data volumes, takes the volume offline'; Admin = $true; Action = { Invoke-VolumeOfflineRepair } }
+        @{ Section = 'MAINTENANCE'; Key = '6'; Label = 'Repair with chkdsk'; Hint = 'next restart if the volume is in use'; Admin = $true; Action = { Invoke-VolumeChkdsk } }
+        @{ Section = 'PARTITIONS'; Key = '7'; Label = 'Create a partition'; Admin = $true; Action = { Invoke-PartitionCreate } }
+        @{ Section = 'PARTITIONS'; Key = '8'; Label = 'Resize a partition'; Admin = $true; Action = { Invoke-PartitionResize } }
+        @{ Section = 'PARTITIONS'; Key = '9'; Label = 'Change a drive letter'; Admin = $true; Action = { Invoke-DriveLetterChange } }
+        @{ Section = 'IRREVERSIBLE OPERATIONS'; Key = '10'; Label = 'Format a volume'; Danger = $true; Admin = $true; Action = { Invoke-VolumeFormat } }
+        @{ Section = 'IRREVERSIBLE OPERATIONS'; Key = '11'; Label = 'Delete a partition'; Danger = $true; Admin = $true; Action = { Invoke-PartitionDelete } }
     )
 }

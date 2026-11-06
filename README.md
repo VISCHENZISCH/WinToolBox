@@ -83,6 +83,7 @@ warns when the last run failed.
 
 - **Format and delete:** show the volume's details and require typing an exact phrase.
 - **Refused targets:** system, boot, recovery and hidden partitions, another Windows installation, and the drive that holds WinToolBox.
+- **Volume repair:** asks for confirmation first. Offline repair refuses the same targets; for the Windows drive, chkdsk can check it at the next restart.
 - **Disk with no partition table:** requires an exact phrase, because it may hold recoverable data.
 - **Cleanup:** shows what it can delete first and never touches Windows logs.
 - **Security audit:** read-only.

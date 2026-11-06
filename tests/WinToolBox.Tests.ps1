@@ -550,6 +550,7 @@ Describe 'Disk safety' {
             function global:Initialize-Disk { param($Number, $PartitionStyle) }
             function global:New-Partition { param($DiskNumber, $AssignDriveLetter, $Size, $UseMaximumSize) }
             function global:Format-Volume { param([Parameter(ValueFromPipeline)]$InputObject, $DriveLetter, $FileSystem, $NewFileSystemLabel, [switch]$Confirm) }
+            function global:Repair-Volume { param($DriveLetter, [switch]$Scan, [switch]$OfflineScanAndFix) }
         }
     }
 
@@ -609,6 +610,38 @@ Describe 'Disk safety' {
         Invoke-PartitionCreate
         Should -Invoke Initialize-Disk -Times 1
         Should -Invoke New-Partition -Times 1
+    }
+    It 'reports a failed scan without stopping the menu' {
+        Mock Read-Host { 'C' }
+        Mock Repair-Volume { throw 'A snapshot error occurred' }
+        { Invoke-VolumeScan } | Should -Not -Throw
+    }
+    It 'refuses to take the Windows drive offline' {
+        Mock Read-Host { 'Y' }
+        Mock Repair-Volume { }
+        Mock Get-Partition { [pscustomobject]@{ IsBoot = $true; IsSystem = $false; DriveLetter = 'C' } }
+        Mock Read-Text { 'C' }
+        Invoke-VolumeOfflineRepair
+        Should -Invoke Repair-Volume -Times 0
+    }
+    It 'repairs a data volume offline only after confirmation' -ForEach @(
+        @{ Answer = 'N'; Calls = 0 }, @{ Answer = 'Y'; Calls = 1 }
+    ) {
+        Mock Read-Host { if ($Prompt -like '*Y/N*') { $Answer } else { 'E' } }
+        Mock Repair-Volume { 'NoErrorsFound' }
+        Mock Write-PartitionSummary { }
+        Mock Test-PathHoldsWindows { $false }
+        Mock Get-Partition { [pscustomobject]@{ IsBoot = $false; IsSystem = $false; IsHidden = $false; Type = 'Basic'; MbrType = 7; DriveLetter = 'E' } }
+        Invoke-VolumeOfflineRepair
+        Should -Invoke Repair-Volume -Times $Calls -ParameterFilter { $OfflineScanAndFix -and $DriveLetter -eq 'E' }
+    }
+    It 'runs chkdsk only after confirmation, attached to the console' -ForEach @(
+        @{ Answer = 'N'; Calls = 0 }, @{ Answer = 'Y'; Calls = 1 }
+    ) {
+        Mock Read-Host { if ($Prompt -like '*Y/N*') { $Answer } else { 'C' } }
+        Mock Start-Process { [pscustomobject]@{ ExitCode = 0 } }
+        Invoke-VolumeChkdsk
+        Should -Invoke Start-Process -Times $Calls -ParameterFilter { $FilePath -eq 'chkdsk.exe' -and $NoNewWindow -and ($ArgumentList -join ' ') -eq 'C: /f' }
     }
 }
 
