@@ -1,0 +1,3 @@
+# cmd.exe exige des fins de ligne CRLF pour resoudre les labels correctement
+*.bat text eol=crlf
+*.cmd text eol=crlf

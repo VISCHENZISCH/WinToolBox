@@ -8,6 +8,7 @@ call "%CORE%"
 call "%CORE%" :display_header "Securite Globale" "SEC"
 echo  [1] Statut  [2] Journaux  [Q] Retour
 echo.
+set "opt="
 set /p "opt=Choix: "
 
 if /i "%opt%"=="Q" exit /b 0
@@ -28,9 +29,17 @@ goto :eof
 echo.
 echo  * Gestion des journaux :
 echo  [V] Voir  [C] Nettoyer  [A] Archiver
+set "lopt="
 set /p "lopt=Action: "
 if /i "%lopt%"=="V" (if exist "logs\*.log" (type "logs\*.log" | more) else (echo Aucun log.))
-if /i "%lopt%"=="C" (del /q logs\*.log & echo [ok])
+if /i "%lopt%"=="C" call :clear_logs
 if /i "%lopt%"=="A" (mkdir logs\archive >nul 2>&1 & move logs\*.log logs\archive\ >nul 2>&1 & echo [ok])
 pause
+goto :eof
+
+:clear_logs
+call "%CORE%" :confirm "Supprimer tous les journaux de WinToolBox ?"
+if errorlevel 1 goto :eof
+del /q logs\*.log
+echo [ok]
 goto :eof

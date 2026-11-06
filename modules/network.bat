@@ -8,6 +8,7 @@ call "%CORE%"
 call "%CORE%" :display_header "Reseau" "NET"
 echo  [1] Info  [2] Monitoring (Live)  [Q] Retour
 echo.
+set "opt="
 set /p "opt=Choix: "
 
 if /i "%opt%"=="Q" exit /b 0

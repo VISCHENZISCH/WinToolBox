@@ -8,6 +8,7 @@ call "%CORE%"
 call "%CORE%" :display_header "Gestion Utilisateurs" "USR"
 echo  [1] Lister  [2] Ajouter  [3] Supprimer  [4] Groupes  [Q] Retour
 echo.
+set "opt="
 set /p "opt=Choix: "
 
 if /i "%opt%"=="Q" exit /b 0
@@ -25,15 +26,23 @@ pause
 goto :eof
 
 :add
+set "u="
 set /p "u=Nom: "
 if "%u%"=="" goto :eof
-net user "%u%" /add && (echo   [ok] Cree) || (echo   [!] Echec)
+echo  Choisissez un mot de passe pour ce compte :
+net user "%u%" * /add && (echo   [ok] Cree) || (echo   [!] Echec)
 pause
 goto :eof
 
 :del
+set "u="
 set /p "u=Nom: "
 if "%u%"=="" goto :eof
+call "%CORE%" :confirm "Supprimer definitivement le compte %u% ?"
+if errorlevel 1 (
+    pause
+    goto :eof
+)
 net user "%u%" /delete && (echo   [ok] Supprime) || (echo   [!] Echec)
 pause
 goto :eof

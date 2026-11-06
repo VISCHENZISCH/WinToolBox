@@ -3,6 +3,7 @@ setlocal enabledelayedexpansion
 chcp 65001 >nul 2>&1
 title WinToolBox v3.0
 
+cd /d "%~dp0" || (echo Dossier du script inaccessible & pause & exit /b 1)
 set "CORE=lib\core.bat"
 if not exist "%CORE%" (echo Erreur Core Lib & pause & exit /b 1)
 call "%CORE%"
@@ -10,6 +11,13 @@ call "%CORE%"
 if not defined BOOT_DONE (
     call :boot_sequence
     set "BOOT_DONE=1"
+)
+
+call "%CORE%" :check_admin
+if errorlevel 1 (
+    echo.
+    echo  [!] Droits administrateur absents : certaines actions vont echouer.
+    pause
 )
 
 :menu
@@ -20,6 +28,7 @@ echo.
 echo  [X] QUITTER
 echo  ---------------------------------------------------------------------------
 echo.
+set "choice="
 set /p "choice=Choice: "
 
 if /i "%choice%"=="X" goto :quit

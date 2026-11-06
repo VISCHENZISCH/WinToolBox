@@ -55,3 +55,11 @@ goto :eof
 :check_admin
 net session >nul 2>&1
 exit /b %ERRORLEVEL%
+
+rem Demande une confirmation : code retour 0 si O, 1 sinon
+:confirm
+set "conf_ans="
+set /p "conf_ans=%~2 [O/N] : "
+if /i "!conf_ans!"=="O" exit /b 0
+echo  Action annulee.
+exit /b 1
