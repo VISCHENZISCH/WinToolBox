@@ -1,3 +1,4 @@
-# cmd.exe exige des fins de ligne CRLF pour resoudre les labels correctement
+# Fins de ligne Windows : cmd.exe en a besoin pour resoudre les labels
 *.bat text eol=crlf
 *.cmd text eol=crlf
+*.ps1 text eol=crlf

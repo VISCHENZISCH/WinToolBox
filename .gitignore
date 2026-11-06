@@ -1,33 +1,20 @@
-# Logs et rapports
-logs/*.txt
-logs/*.log
-
-# Cache système
-cache/*.cache
-cache/*.tmp
+# Donnees generees localement : elles peuvent contenir des informations sur la machine
+logs/
+reports/
 
 # Fichiers temporaires
 *.tmp
 *.temp
 *.bak
-*.backup
+*.swp
+*.swo
+*~
 
-# Fichiers système Windows
+# Fichiers systeme Windows
 Thumbs.db
 ehthumbs.db
 Desktop.ini
 $RECYCLE.BIN/
 
-# Fichiers de développement
-*.swp
-*.swo
-*~
-*.py
-test_output.txt
-# Fichiers de test
-test_*.bat
-debug_*.bat
-temp_*.txt
-
-# Fichiers PowerShell temporaires
-*.ps1.tmp
+# Resultats de tests
+testResults.xml
