@@ -6,7 +6,7 @@
 
 <h1 align="center">WinToolBox</h1>
 
-<p align="center"><strong>Windows backup, disk management and security audit toolkit in PowerShell.<br>Nothing to install: everything it uses ships with Windows.</strong></p>
+<p align="center"><strong>Windows backup, disk, process and security toolkit in PowerShell.</strong></p>
 
 <p align="center">
   <a href="https://github.com/VISCHENZISCH/WinToolBox"><img src="https://img.shields.io/badge/GitHub-WinToolBox-181717?logo=github" alt="GitHub repository"></a>
@@ -45,79 +45,42 @@
 
 1. Download or clone the repository.
 2. Double-click `WintoolBox.bat`.
-3. Accept the restart as administrator to unlock disks, system images and scheduled tasks. Windows cannot elevate a running console, so the menu reopens in a new cmd window.
+3. Accept the restart as administrator to unlock all features. The menu reopens in a new cmd window.
 
-Requires Windows 10 or 11 with Windows PowerShell 5.1, which is included in Windows.
+Requires Windows 10 or 11. Nothing to install.
 
 ## Backups
 
-Full and incremental versions, each one restorable on its own.
-
-| Feature | Behavior |
-|---|---|
-| Copy check | SHA-256 of each copy compared with the source; a copy that differs is rejected |
-| Restore | Backup files are checked first, so a damaged one never overwrites a target file |
-| Interrupted backup | Ignored, and its temporary folder is removed on the next run |
-| Retention | Empty full backups, or those with over 10% failed files, never push out a good chain |
-| Open files | Copied through VSS (administrator) |
-| NTFS permissions | Saved in `acls.txt`; reapplied at restore on request; owners are not saved |
-| Links | Junctions and symbolic links are skipped and counted |
+- Full and incremental versions, each restorable on its own.
+- Every copy is checked with SHA-256, at backup and at restore.
+- Open files are copied through VSS (administrator).
 
 Delete old versions from the menu, never by hand: an incremental version needs its chain.
-
-### Command line and scheduling
 
 ```bat
 WintoolBox.bat -Task Backup -Source "D:\Documents" -Destination "E:\Backups" -Mode Incremental -FullEvery 7 -KeepChains 4
 ```
 
-| Exit code | Meaning |
-|---|---|
-| `0` | Success |
-| `1` | Failure |
-| `2` | Partial backup, or the source suddenly lost most of its files |
+Exit codes: `0` success, `1` failure, `2` partial backup or source that lost most of its files.
 
-Scheduled tasks run with the limited rights of the current account, default to a full backup
-every 7 versions and keep 4 chains. They cannot reach network shares or use VSS. The main menu
-warns when the last run failed.
+Scheduled tasks run with the current account's limited rights: no VSS, no network shares.
 
 ## Safety
 
-- **Format and delete:** show the volume's details and require typing an exact phrase.
-- **Refused targets:** system, boot, recovery and hidden partitions, another Windows installation, and the drive that holds WinToolBox.
-- **Volume repair:** asks for confirmation first. Offline repair refuses the same targets; for the Windows drive, chkdsk can check it at the next restart.
-- **Disk with no partition table:** requires an exact phrase, because it may hold recoverable data.
-- **Cleanup:** shows what it can delete first and never touches Windows logs.
-- **Processes:** ending or reprioritizing Windows processes such as `lsass` or `svchost` is refused, and Realtime priority is not offered. A PID that now belongs to another process is not ended.
-- **Security audit:** read-only.
-- **Execution policy:** the launcher runs `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`, which applies to this process only; the machine configuration is not changed.
-- **Group Policy and locked-down machines:** a Group Policy that enforces `Restricted` or `AllSigned`, and Constrained Language Mode (AppLocker, WDAC), cannot be overridden. WinToolBox stops with a message saying so.
+- Format and delete require typing an exact phrase. System, boot and recovery partitions are refused.
+- Windows processes such as `lsass` cannot be ended or reprioritized.
+- The execution policy changes for the running process only. A Group Policy or AppLocker block stops WinToolBox with a clear message.
 
-`logs\` and `reports\` describe your machine. Do not publish them.
+`logs\` and `reports\` describe your machine: do not publish them.
 
 ## Limitations
 
-- No sector-by-sector cloning, boot media, or recovery of deleted files and partitions.
-- No MBR/GPT conversion or moving partitions.
-- No compression or encryption of file backups: anyone holding the destination drive can read them.
-- The destination stays writable, so ransomware that reaches it can damage the backups. No immutable or off-site copy is made: keep one yourself.
-- EFS-encrypted files are copied only if the account can read them, and are then stored decrypted.
-- Only the main content of each file is verified. Alternate data streams are not checked, so do not rely on them being preserved.
-- A file deleted by accident leaves the backups once its chain expires. A warning is shown only if the source loses most of its files at once.
-- No temperature readings: Windows has no reliable built-in source for them. GPU use requires Windows 10 1709 or later and a driver that reports it.
-- The system image relies on `wbadmin` and is restored from the Windows Recovery Environment.
-- Output is in English, except for names set by Windows (such as the edition, groups and services) and `chkdsk`, whose messages and questions use the Windows language.
-
-## Project layout
-
-```text
-WintoolBox.bat       launcher
-src\Launcher.ps1     reads the command line passed by the batch file
-src\WinToolBox.ps1   entry point and main menu
-src\lib\             logging, display, input, file traversal
-src\modules\         Backup, Disk, Maintenance, Network, Performance, Processes, Security, System, Users
-tests\               Pester tests
-```
+- **Backups are not encrypted**: anyone holding the destination drive can read them, including EFS files, which are stored decrypted.
+- **Keep an offline copy**: ransomware that reaches the destination can damage the backups.
+- NTFS owners are not saved, and alternate data streams are not verified.
+- A file deleted by accident leaves the backups once its chain expires.
+- No cloning, boot media, file recovery, MBR/GPT conversion or temperature readings.
+- `chkdsk` and names set by Windows stay in the Windows language.
 
 ## Tests
 
