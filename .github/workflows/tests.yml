@@ -1,0 +1,46 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Windows PowerShell 5.1
+    runs-on: windows-latest
+    # A test stuck on a prompt must not hold the runner for hours.
+    timeout-minutes: 15
+    defaults:
+      run:
+        # "powershell" is Windows PowerShell 5.1, the version the project targets; "pwsh" is 7.
+        shell: powershell
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install tools
+        run: |
+          $PSVersionTable.PSVersion.ToString()
+          Install-Module Pester -RequiredVersion 6.2.0 -Scope CurrentUser -Force -SkipPublisherCheck
+          Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force
+
+      - name: Static analysis
+        run: |
+          $findings = @(Invoke-ScriptAnalyzer -Path src -Recurse)
+          $findings | Format-Table ScriptName, Line, Severity, RuleName -AutoSize | Out-String -Width 160
+          # Warnings are shown but do not fail the build: the existing code has style warnings.
+          if (@($findings | Where-Object Severity -in 'Error', 'ParseError').Count -gt 0) { exit 1 }
+
+      - name: Pester tests
+        run: |
+          Import-Module Pester -RequiredVersion 6.2.0
+          $configuration = New-PesterConfiguration
+          $configuration.Run.Path = 'tests'
+          $configuration.Run.PassThru = $true
+          $configuration.Output.Verbosity = 'Detailed'
+          $result = Invoke-Pester -Configuration $configuration
+          if ($result.Result -ne 'Passed') { exit 1 }

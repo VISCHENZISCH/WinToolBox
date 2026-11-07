@@ -179,6 +179,34 @@ exit $Code
     }
 }
 
+Describe 'Launcher' -Skip:($env:OS -ne 'Windows_NT') {
+    BeforeAll {
+        $script:Launcher = [IO.Path]::GetFullPath([IO.Path]::Combine($PSScriptRoot, '..', 'WintoolBox.bat'))
+        function Invoke-Launcher {
+            param([string[]]$Arguments)
+            $ErrorActionPreference = 'Continue'
+            & $script:Launcher @Arguments *> $null
+            return $LASTEXITCODE
+        }
+    }
+
+    It 'runs a backup from a path that cmd and PowerShell could both misread' {
+        $source = Join-Path $TestDrive "it's a `$HOME & (source)"
+        $repo = Join-Path $TestDrive 'backup target'
+        [void](Write-TestFile $source 'keep.txt' 'keep')
+
+        Invoke-Launcher @('-Task', 'Backup', '-Source', $source, '-Destination', $repo, '-Mode', 'Full') | Should -Be 0
+        @(Get-ChildItem -LiteralPath $repo -Recurse -Filter 'keep.txt').Count | Should -Be 1
+    }
+    It 'returns 1 when the backup fails' {
+        $missing = Join-Path $TestDrive 'missing'
+        Invoke-Launcher @('-Task', 'Backup', '-Source', $missing, '-Destination', (Join-Path $TestDrive 'target')) | Should -Be 1
+    }
+    It 'returns 1 when an argument is rejected' {
+        Invoke-Launcher @('-Task', 'NotATask') | Should -Be 1
+    }
+}
+
 Describe 'Scheduled task results' {
     It 'flags only the results that are problems' {
         Test-TaskResultProblem -Code 1 | Should -BeTrue
