@@ -397,3 +397,23 @@ function New-ReportPath {
     param([Parameter(Mandatory)][string]$Prefix)
     return (Join-Path $script:ReportDir ('{0}-{1}.txt' -f $Prefix, (Get-Date -Format 'yyyyMMdd-HHmmss')))
 }
+
+function ConvertTo-PowerShellLiteral {
+    param([Parameter(Mandatory)][string]$Value)
+    return "'{0}'" -f [Management.Automation.Language.CodeGeneration]::EscapeSingleQuotedStringContent($Value)
+}
+
+# Command line for powershell.exe that sets the execution policy for its own process, then runs
+# a script. ScriptArguments is PowerShell source: quote its values with ConvertTo-PowerShellLiteral.
+# Windows paths cannot contain a double quote, so the single-quoted script path cannot end -Command.
+function New-BypassCommandLine {
+    param(
+        [Parameter(Mandatory)][string]$ScriptPath,
+        [string]$ScriptArguments = '',
+        [switch]$NonInteractive
+    )
+    $switches = if ($NonInteractive) { '-NoProfile -NonInteractive' } else { '-NoLogo -NoProfile' }
+    $command = "`$ErrorActionPreference='Stop'; try { Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force } catch { }; " +
+    "try { & $(ConvertTo-PowerShellLiteral $ScriptPath) $ScriptArguments; exit `$LASTEXITCODE } catch { [Console]::Error.WriteLine(`$_); exit 1 }"
+    return "$switches -Command `"$command`""
+}

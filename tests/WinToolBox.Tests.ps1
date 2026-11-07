@@ -137,6 +137,48 @@ Describe 'Recycle Bin' {
     }
 }
 
+Describe 'Bypass command line' {
+    BeforeAll {
+        $script:folder = [IO.Path]::Combine([IO.Path]::GetTempPath(), "wtb bypass it's $([guid]::NewGuid())")
+        $script:target = Write-TestFile -Root $script:folder -Relative 'target.ps1' -Content @'
+param([string]$Source, [int]$Code = 0, [switch]$Fail)
+if ($Fail) { throw 'failed' }
+[IO.File]::WriteAllText("$PSScriptRoot/out.txt", $Source)
+exit $Code
+'@
+        function Invoke-CommandLine {
+            param([string]$Arguments)
+            $info = [Diagnostics.ProcessStartInfo]::new((Get-Process -Id $PID).Path, $Arguments)
+            $info.UseShellExecute = $false
+            $info.RedirectStandardError = $true
+            $process = [Diagnostics.Process]::Start($info)
+            [void]$process.StandardError.ReadToEnd()
+            $process.WaitForExit()
+            return $process.ExitCode
+        }
+    }
+    AfterAll { Remove-Item -LiteralPath $script:folder -Recurse -Force -ErrorAction SilentlyContinue }
+
+    It 'sets the policy for the process only' {
+        $line = New-BypassCommandLine -ScriptPath $script:target
+        $line | Should -Match 'Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force'
+        $line | Should -Not -Match ' -File '
+    }
+    It 'keeps a difficult path in one piece' {
+        $value = 'D:\it''s $HOME `x & (a)\'
+        $arguments = '-Source {0}' -f (ConvertTo-PowerShellLiteral $value)
+        Invoke-CommandLine (New-BypassCommandLine -ScriptPath $script:target -ScriptArguments $arguments -NonInteractive) | Should -Be 0
+        [IO.File]::ReadAllText("$script:folder/out.txt") | Should -Be $value
+    }
+    It 'forwards the exit code of the script' {
+        Invoke-CommandLine (New-BypassCommandLine -ScriptPath $script:target -ScriptArguments '-Code 2' -NonInteractive) | Should -Be 2
+    }
+    It 'fails when the script throws or rejects its arguments' {
+        Invoke-CommandLine (New-BypassCommandLine -ScriptPath $script:target -ScriptArguments '-Fail' -NonInteractive) | Should -Be 1
+        Invoke-CommandLine (New-BypassCommandLine -ScriptPath $script:target -ScriptArguments '-Code notanumber' -NonInteractive) | Should -Be 1
+    }
+}
+
 Describe 'Scheduled task results' {
     It 'flags only the results that are problems' {
         Test-TaskResultProblem -Code 1 | Should -BeTrue

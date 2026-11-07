@@ -87,7 +87,7 @@ warns when the last run failed.
 - **Disk with no partition table:** requires an exact phrase, because it may hold recoverable data.
 - **Cleanup:** shows what it can delete first and never touches Windows logs.
 - **Security audit:** read-only.
-- **Execution policy:** `Bypass` applies to this process only; the machine configuration is not changed.
+- **Execution policy:** the launcher runs `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`, which applies to this process only; the machine configuration is not changed.
 
 `logs\` and `reports\` describe your machine. Do not publish them.
 

@@ -615,12 +615,6 @@ function Start-SystemImageBackup {
 }
 
 # A trailing \ would escape the closing quote: "D:\" must be written "D:\\".
-function ConvertTo-QuotedArgument {
-    param([Parameter(Mandatory)][string]$Value)
-    if ($Value.EndsWith('\')) { $Value += '\' }
-    return "`"$Value`""
-}
-
 function Register-BackupSchedule {
     param(
         [Parameter(Mandatory)][string]$Name,
@@ -636,7 +630,8 @@ function Register-BackupSchedule {
     $Destination = Resolve-FullPath $Destination
     Assert-BackupPaths -Source $Source -Destination $Destination
     $at = [datetime]::ParseExact($Time, 'HH:mm', [Globalization.CultureInfo]::InvariantCulture)
-    $arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0} -Task Backup -Source {1} -Destination {2} -Mode Incremental -FullEvery {3} -KeepChains {4}' -f (ConvertTo-QuotedArgument $script:EntryScript), (ConvertTo-QuotedArgument $Source), (ConvertTo-QuotedArgument $Destination), $FullEvery, $KeepChains
+    $scriptArguments = '-Task Backup -Source {0} -Destination {1} -Mode Incremental -FullEvery {2} -KeepChains {3}' -f (ConvertTo-PowerShellLiteral $Source), (ConvertTo-PowerShellLiteral $Destination), $FullEvery, $KeepChains
+    $arguments = New-BypassCommandLine -ScriptPath $script:EntryScript -ScriptArguments $scriptArguments -NonInteractive
     $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $arguments
     $trigger = if ($Frequency -eq 'Daily') { New-ScheduledTaskTrigger -Daily -At $at } else { New-ScheduledTaskTrigger -Weekly -DaysOfWeek Sunday -At $at }
     # Limited rights of the current account: the script lives in a folder the user can

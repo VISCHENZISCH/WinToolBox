@@ -48,7 +48,7 @@ $Host.UI.RawUI.WindowTitle = "WinToolBox $script:AppVersion"
 if (-not (Test-IsAdmin)) {
     Write-Status WARN 'Without administrator rights, disks and several tools will be unavailable.'
     if (Confirm-Action 'Restart as administrator?') {
-        $arguments = @('-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$script:EntryScript`"")
+        $arguments = New-BypassCommandLine -ScriptPath $script:EntryScript
         Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $arguments
         exit 0
     }
