@@ -417,3 +417,10 @@ function New-BypassCommandLine {
     "try { & $(ConvertTo-PowerShellLiteral $ScriptPath) $ScriptArguments; exit `$LASTEXITCODE } catch { [Console]::Error.WriteLine(`$_); exit 1 }"
     return "$switches -Command `"$command`""
 }
+
+# cmd.exe arguments that run a batch file. /c removes the outer quotes, so the inner pair still
+# protects a path containing spaces or an ampersand.
+function New-ElevatedLauncherArguments {
+    param([Parameter(Mandatory)][string]$LauncherPath)
+    return "/d /c `"`"$LauncherPath`"`""
+}

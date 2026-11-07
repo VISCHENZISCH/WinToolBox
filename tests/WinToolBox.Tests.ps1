@@ -179,6 +179,18 @@ exit $Code
     }
 }
 
+Describe 'Elevated restart' {
+    It 'quotes the launcher path for cmd' {
+        New-ElevatedLauncherArguments -LauncherPath 'C:\My Tools & Co\WintoolBox.bat' |
+            Should -Be '/d /c ""C:\My Tools & Co\WintoolBox.bat""'
+    }
+    It 'restarts through cmd, never in a PowerShell window' {
+        $entry = [IO.File]::ReadAllText([IO.Path]::Combine($PSScriptRoot, '..', 'src', 'WinToolBox.ps1'))
+        $entry | Should -Match 'Start-Process -FilePath \$env:ComSpec -Verb RunAs'
+        $entry | Should -Not -Match "Start-Process -FilePath 'powershell"
+    }
+}
+
 Describe 'Launcher' -Skip:($env:OS -ne 'Windows_NT') {
     BeforeAll {
         $script:Launcher = [IO.Path]::GetFullPath([IO.Path]::Combine($PSScriptRoot, '..', 'WintoolBox.bat'))

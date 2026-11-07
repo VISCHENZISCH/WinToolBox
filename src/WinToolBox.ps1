@@ -48,8 +48,10 @@ $Host.UI.RawUI.WindowTitle = "WinToolBox $script:AppVersion"
 if (-not (Test-IsAdmin)) {
     Write-Status WARN 'Without administrator rights, disks and several tools will be unavailable.'
     if (Confirm-Action 'Restart as administrator?') {
-        $arguments = New-BypassCommandLine -ScriptPath $script:EntryScript
-        Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $arguments
+        # Windows cannot elevate a running console, so a new window is unavoidable. Starting cmd
+        # keeps it a cmd window, with PowerShell inside it and no window of its own.
+        $launcher = Join-Path $script:AppRoot 'WintoolBox.bat'
+        Start-Process -FilePath $env:ComSpec -Verb RunAs -ArgumentList (New-ElevatedLauncherArguments -LauncherPath $launcher)
         exit 0
     }
 }

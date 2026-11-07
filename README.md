@@ -43,7 +43,7 @@
 
 1. Download or clone the repository.
 2. Double-click `WintoolBox.bat`.
-3. Accept the restart as administrator to unlock disks, system images and scheduled tasks.
+3. Accept the restart as administrator to unlock disks, system images and scheduled tasks. Windows cannot elevate a running console, so the menu reopens in a new cmd window.
 
 Requires Windows 10 or 11 with Windows PowerShell 5.1, which is included in Windows.
 
