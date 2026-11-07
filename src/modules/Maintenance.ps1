@@ -110,7 +110,7 @@ function Invoke-CleanupWizard {
     $summary = New-Object 'System.Collections.Generic.List[object]'
     foreach ($row in $selected) {
         if ($null -eq $row.Target) {
-            $bin = Invoke-RecycleBinClear -SizeBefore $row.Size
+            $bin = Invoke-WithLoader 'Emptying the Recycle Bin' { Invoke-RecycleBinClear -SizeBefore $row.Size }
             $totalFreed += $bin.Freed
             $summary.Add([pscustomobject]@{ Item = $row.Name; Freed = Format-Bytes $bin.Freed; 'Files kept' = $(if ($bin.Left) { "$(Format-Bytes $bin.Left) left" } else { '0' }) })
             continue
@@ -121,7 +121,7 @@ function Invoke-CleanupWizard {
             if ($service -and $service.Status -eq 'Running') { Stop-Service -InputObject $service -Force } else { $service = $null }
         }
         try {
-            $result = Remove-CleanupCandidates -Root $row.Target.Root -Candidates $row.Candidates
+            $result = Invoke-WithLoader "Cleaning: $($row.Name)" { Remove-CleanupCandidates -Root $row.Target.Root -Candidates $row.Candidates }
         }
         finally {
             if ($service) { Start-Service -InputObject $service }
@@ -137,22 +137,69 @@ function Invoke-CleanupWizard {
     Write-Status OK ('Total freed: {0}.' -f (Format-Bytes $totalFreed))
 }
 
-# The commands show their own progress; only their exit code decides the result.
-function Invoke-RepairCommand {
-    param([Parameter(Mandatory)][string]$Label, [Parameter(Mandatory)][string]$Command, [string[]]$Arguments)
+function Write-RepairResult {
+    param([Parameter(Mandatory)][string]$Label, [Parameter(Mandatory)][int]$Code)
+    Write-Log -Message "${Label}: code $Code."
+    if ($Code -eq 0) { Write-Status OK "$Label completed." }
+    else { Write-Status FAIL "$Label returned code $Code." }
+}
+
+function Invoke-DismRepair {
+    param([Parameter(Mandatory)][string]$Label, [Parameter(Mandatory)][string]$Operation)
     Write-Status INFO "${Label}: this operation may take several minutes."
-    & $Command @Arguments | Out-Host
-    $code = $LASTEXITCODE
-    Write-Log -Message "${Label}: code $code."
-    if ($code -eq 0) { Write-Status OK "$Label completed." }
-    else { Write-Status FAIL "$Label returned code $code." }
+    $code = Invoke-QuietTool -Label $Label -Command 'dism.exe' -Arguments '/English', '/Online', '/Cleanup-Image', $Operation
+    Write-RepairResult -Label $Label -Code $code
+}
+
+# What the check found, from the [SR] lines it added to the log. $null if the log cannot tell.
+function Get-SfcResult {
+    param([Parameter(Mandatory)][string]$LogPath, [Parameter(Mandatory)][datetime]$Since)
+    $completed = $false
+    $repaired = 0
+    $unrepaired = 0
+    $reader = $null
+    try {
+        # Shared access: Windows can keep this log open for writing.
+        $stream = [IO.FileStream]::new($LogPath, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete)
+        $reader = [IO.StreamReader]::new($stream)
+        while ($null -ne ($line = $reader.ReadLine())) {
+            if ($line -notmatch '^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}).*\[SR\] (.*)$') { continue }
+            $text = $Matches[2]
+            if ([datetime]::ParseExact($Matches[1], 'yyyy-MM-dd HH:mm:ss', [Globalization.CultureInfo]::InvariantCulture) -lt $Since) { continue }
+            if ($text -like 'Verify complete*') { $completed = $true }
+            elseif ($text -like 'Cannot repair member file*') { $unrepaired++ }
+            elseif ($text -like 'Repaired file*') { $repaired++ }
+        }
+    }
+    catch {
+        Write-Verbose "SFC log unavailable: $($_.Exception.Message)"
+        return $null
+    }
+    finally { if ($reader) { $reader.Dispose() } }
+    if (-not $completed) { return $null }
+    return [pscustomobject]@{ Repaired = $repaired; Unrepaired = $unrepaired }
+}
+
+function Invoke-SfcCheck {
+    $label = 'SFC check'
+    $logPath = Join-Path $env:SystemRoot 'Logs\CBS\CBS.log'
+    $start = Get-Date
+    Write-Status INFO "${label}: this operation may take several minutes."
+    $code = Invoke-QuietTool -Label $label -Command 'sfc.exe' -Arguments '/scannow'
+    Write-Log -Message "${label}: code $code."
+    $result = Get-SfcResult -LogPath $logPath -Since $start
+    # "No problem" is only stated when the log confirms it: the exit code does not say so.
+    if (-not $result) { Write-Status WARN "$label finished with code $code, but its result could not be read. See $logPath" }
+    elseif ($result.Unrepaired) { Write-Status FAIL "$($result.Unrepaired) damaged files could not be repaired. See $logPath" }
+    elseif ($result.Repaired) { Write-Status OK "$($result.Repaired) damaged files were repaired." }
+    else { Write-Status OK 'No damaged system files found.' }
 }
 
 function Show-MaintenanceMenu {
     Show-Menu -Title 'Cleanup and repair' -Items @(
         @{ Section = 'CLEANUP'; Key = '1'; Label = 'Scan and clean'; Hint = 'shows what can be deleted first'; Action = { Invoke-CleanupWizard } }
-        @{ Section = 'CLEANUP'; Key = '2'; Label = 'Shrink the Windows component store'; Admin = $true; Action = { Invoke-RepairCommand -Label 'Component cleanup' -Command 'dism.exe' -Arguments '/Online', '/Cleanup-Image', '/StartComponentCleanup' } }
-        @{ Section = 'REPAIR'; Key = '3'; Label = 'Repair the Windows image (DISM)'; Admin = $true; Action = { Invoke-RepairCommand -Label 'DISM repair' -Command 'dism.exe' -Arguments '/Online', '/Cleanup-Image', '/RestoreHealth' } }
-        @{ Section = 'REPAIR'; Key = '4'; Label = 'Check system files (SFC)'; Admin = $true; Action = { Invoke-RepairCommand -Label 'SFC check' -Command 'sfc.exe' -Arguments '/scannow' } }
+        @{ Section = 'CLEANUP'; Key = '2'; Label = 'Shrink the Windows component store'; Admin = $true; Action = { Invoke-DismRepair -Label 'Component cleanup' -Operation '/StartComponentCleanup' } }
+        @{ Section = 'REPAIR'; Key = '3'; Label = 'Repair the Windows image (DISM)'; Admin = $true; Action = { Invoke-DismRepair -Label 'DISM repair' -Operation '/RestoreHealth' } }
+        @{ Section = 'REPAIR'; Key = '4'; Label = 'Check system files (SFC)'; Admin = $true; Action = { Invoke-SfcCheck } }
     )
 }

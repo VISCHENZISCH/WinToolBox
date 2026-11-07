@@ -128,7 +128,7 @@ function Show-DiskHealth {
 function Invoke-VolumeScan {
     $letter = Read-DriveLetter
     if (-not $letter) { return }
-    try { $result = Repair-Volume -DriveLetter $letter -Scan -ErrorAction Stop }
+    try { $result = Invoke-WithLoader "Scanning ${letter}:" { Repair-Volume -DriveLetter $letter -Scan -ErrorAction Stop } }
     catch {
         Write-Log -Level ERROR -Message "Volume scan ${letter}: $($_.Exception.Message)"
         Write-Status FAIL "Scan of ${letter}: failed: $($_.Exception.Message)"
@@ -149,7 +149,7 @@ function Invoke-VolumeOfflineRepair {
     Write-PartitionSummary -Partition $partition
     Write-Status WARN "${letter}: goes offline during the repair: programs using it lose access and unsaved work may be lost."
     if (-not (Confirm-Action "Repair ${letter}: offline?")) { return }
-    $result = Repair-Volume -DriveLetter $letter -OfflineScanAndFix -ErrorAction Stop
+    $result = Invoke-WithLoader "Repairing ${letter}:" { Repair-Volume -DriveLetter $letter -OfflineScanAndFix -ErrorAction Stop }
     Write-Log -Message "Offline repair ${letter}: $result."
     if ("$result" -eq 'NoErrorsFound') { Write-Status OK "No errors on ${letter}:." }
     else { Write-Status INFO "Result on ${letter}: $result." }
@@ -162,6 +162,7 @@ function Invoke-VolumeChkdsk {
     if (-not $letter) { return }
     Write-Status INFO 'If the volume is in use, chkdsk asks whether to check it at the next restart.'
     Write-Status WARN 'If it offers to force a dismount, accepting closes the files open on that volume.'
+    Write-Status INFO 'chkdsk has no language option: its messages and questions use the Windows language.'
     if (-not (Confirm-Action "Run chkdsk ${letter}: /f?")) { return }
     $process = Start-Process -FilePath 'chkdsk.exe' -ArgumentList "${letter}:", '/f' -NoNewWindow -Wait -PassThru
     $code = $process.ExitCode
@@ -174,7 +175,7 @@ function Invoke-VolumeOptimize {
     $letter = Read-DriveLetter
     if (-not $letter) { return }
     Write-Status INFO 'Windows chooses TRIM for an SSD and defragmentation for a hard drive.'
-    Optimize-Volume -DriveLetter $letter -Verbose
+    Invoke-WithLoader "Optimizing ${letter}:" { Optimize-Volume -DriveLetter $letter }
     Write-Log -Message "Volume optimization $letter."
     Write-Status OK 'Optimization completed.'
 }
@@ -195,7 +196,7 @@ function Invoke-PartitionResize {
         return
     }
     if (-not (Confirm-Action ('Resize {0}: to {1}? Make a backup first.' -f $letter, (Format-Bytes $size)))) { return }
-    Resize-Partition -DriveLetter $letter -Size $size
+    Invoke-WithLoader "Resizing ${letter}:" { Resize-Partition -DriveLetter $letter -Size $size }
     Write-Log -Message "Partition $letter resized to $size bytes."
     Write-Status OK 'Partition resized.'
 }
@@ -235,7 +236,7 @@ function Invoke-PartitionCreate {
     }
     elseif (-not (Confirm-Action "Create and format a $fileSystem partition on disk $($disk.Number)?")) { return }
     $partition = New-Partition @parameters
-    [void]($partition | Format-Volume -FileSystem $fileSystem -NewFileSystemLabel $label -Confirm:$false)
+    [void](Invoke-WithLoader "Formatting $($partition.DriveLetter):" { $partition | Format-Volume -FileSystem $fileSystem -NewFileSystemLabel $label -Confirm:$false })
     Write-Log -Message "Partition created on disk $($disk.Number) ($fileSystem)."
     Write-Status OK "Partition created on $($partition.DriveLetter):."
 }
@@ -251,7 +252,7 @@ function Invoke-VolumeFormat {
         Write-Status INFO 'Format cancelled.'
         return
     }
-    [void](Format-Volume -DriveLetter $letter -FileSystem $fileSystem -NewFileSystemLabel $label -Confirm:$false)
+    [void](Invoke-WithLoader "Formatting ${letter}:" { Format-Volume -DriveLetter $letter -FileSystem $fileSystem -NewFileSystemLabel $label -Confirm:$false })
     Write-Log -Level WARN -Message "Volume $letter formatted as $fileSystem."
     Write-Status OK "${letter}: formatted as $fileSystem."
 }

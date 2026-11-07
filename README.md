@@ -31,12 +31,14 @@
    [3] Cleanup and repair    temporary files, DISM, SFC
 
   *** SYSTEM
-   [4] System information    hardware, processes, startup, services
-   [5] Users and groups      local accounts and group members
+   [4] System information    hardware, startup, services
+   [5] Processes             top CPU, memory, GPU, details, end, priority
+   [6] Performance           live CPU, RAM, GPU, disks, network
+   [7] Users and groups      local accounts and group members
 
   *** NETWORK AND SECURITY
-   [6] Network               addresses, connection test, ports, DNS
-   [7] Security and logs     read-only audit, tool log
+   [8] Network               addresses, connection test, ports, DNS
+   [9] Security and logs     read-only audit, tool log
 ```
 
 ## Quick start
@@ -56,7 +58,7 @@ Full and incremental versions, each one restorable on its own.
 | Copy check | SHA-256 of each copy compared with the source; a copy that differs is rejected |
 | Restore | Backup files are checked first, so a damaged one never overwrites a target file |
 | Interrupted backup | Ignored, and its temporary folder is removed on the next run |
-| Retention | Empty or mostly failed full backups never push out a good chain |
+| Retention | Empty full backups, or those with over 10% failed files, never push out a good chain |
 | Open files | Copied through VSS (administrator) |
 | NTFS permissions | Saved in `acls.txt`; reapplied at restore on request; owners are not saved |
 | Links | Junctions and symbolic links are skipped and counted |
@@ -86,8 +88,10 @@ warns when the last run failed.
 - **Volume repair:** asks for confirmation first. Offline repair refuses the same targets; for the Windows drive, chkdsk can check it at the next restart.
 - **Disk with no partition table:** requires an exact phrase, because it may hold recoverable data.
 - **Cleanup:** shows what it can delete first and never touches Windows logs.
+- **Processes:** ending or reprioritizing Windows processes such as `lsass` or `svchost` is refused, and Realtime priority is not offered. A PID that now belongs to another process is not ended.
 - **Security audit:** read-only.
 - **Execution policy:** the launcher runs `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`, which applies to this process only; the machine configuration is not changed.
+- **Group Policy and locked-down machines:** a Group Policy that enforces `Restricted` or `AllSigned`, and Constrained Language Mode (AppLocker, WDAC), cannot be overridden. WinToolBox stops with a message saying so.
 
 `logs\` and `reports\` describe your machine. Do not publish them.
 
@@ -95,17 +99,23 @@ warns when the last run failed.
 
 - No sector-by-sector cloning, boot media, or recovery of deleted files and partitions.
 - No MBR/GPT conversion or moving partitions.
-- No compression or encryption of file backups.
+- No compression or encryption of file backups: anyone holding the destination drive can read them.
+- The destination stays writable, so ransomware that reaches it can damage the backups. No immutable or off-site copy is made: keep one yourself.
+- EFS-encrypted files are copied only if the account can read them, and are then stored decrypted.
+- Only the main content of each file is verified. Alternate data streams are not checked, so do not rely on them being preserved.
 - A file deleted by accident leaves the backups once its chain expires. A warning is shown only if the source loses most of its files at once.
+- No temperature readings: Windows has no reliable built-in source for them. GPU use requires Windows 10 1709 or later and a driver that reports it.
 - The system image relies on `wbadmin` and is restored from the Windows Recovery Environment.
+- Output is in English, except for names set by Windows (such as the edition, groups and services) and `chkdsk`, whose messages and questions use the Windows language.
 
 ## Project layout
 
 ```text
 WintoolBox.bat       launcher
+src\Launcher.ps1     reads the command line passed by the batch file
 src\WinToolBox.ps1   entry point and main menu
 src\lib\             logging, display, input, file traversal
-src\modules\         Backup, Disk, Maintenance, Network, Security, System, Users
+src\modules\         Backup, Disk, Maintenance, Network, Performance, Processes, Security, System, Users
 tests\               Pester tests
 ```
 

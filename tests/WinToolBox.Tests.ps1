@@ -4,7 +4,7 @@
 BeforeAll {
     $src = [IO.Path]::GetFullPath([IO.Path]::Combine($PSScriptRoot, '..', 'src'))
     . ([IO.Path]::Combine($src, 'lib', 'Common.ps1'))
-    foreach ($module in 'Backup', 'Disk', 'Maintenance', 'Network', 'Users', 'Security') {
+    foreach ($module in 'Backup', 'Disk', 'Maintenance', 'Processes', 'Performance', 'Network', 'Users', 'Security') {
         . ([IO.Path]::Combine($src, 'modules', "$module.ps1"))
     }
 
@@ -179,6 +179,345 @@ exit $Code
     }
 }
 
+Describe 'English output' {
+    It 'formats numbers and messages in English, whatever the Windows language' {
+        $thread = [Threading.Thread]::CurrentThread
+        $culture, $uiCulture = $thread.CurrentCulture, $thread.CurrentUICulture
+        try {
+            $thread.CurrentCulture = [Globalization.CultureInfo]::GetCultureInfo('fr-FR')
+            $thread.CurrentUICulture = [Globalization.CultureInfo]::GetCultureInfo('fr-FR')
+            Set-EnglishCulture
+            Format-Bytes 1536 | Should -Be '1.5 KB'
+            $thread.CurrentUICulture.Name | Should -Be 'en-US'
+        }
+        finally {
+            $thread.CurrentCulture = $culture
+            $thread.CurrentUICulture = $uiCulture
+        }
+    }
+    It 'asks DISM for English' {
+        Mock Invoke-QuietTool { 0 }
+        Invoke-DismRepair -Label 'DISM repair' -Operation '/RestoreHealth' *> $null
+        Should -Invoke Invoke-QuietTool -Times 1 -ParameterFilter {
+            $Command -eq 'dism.exe' -and ($Arguments -join ' ') -eq '/English /Online /Cleanup-Image /RestoreHealth'
+        }
+    }
+
+    Context 'Quiet tool' {
+        BeforeAll {
+            $script:savedLog = $script:LogFile
+            $script:LogFile = Join-Path $TestDrive 'wintoolbox.log'
+            $script:shell = (Get-Process -Id $PID).Path
+        }
+        AfterAll { $script:LogFile = $script:savedLog }
+
+        It 'shows no tool text and keeps no file on success' {
+            $console = Invoke-QuietTool -Label 'T' -Command $script:shell -Arguments '-NoProfile', '-Command', "'texte'; exit 0" 6>&1
+            @($console)[-1] | Should -Be 0
+            ($console -join ' ') | Should -Not -Match 'texte'
+            @(Get-ChildItem -LiteralPath $TestDrive -Filter '*.txt').Count | Should -Be 0
+        }
+        It 'returns the exit code and keeps the output on failure' {
+            $console = Invoke-QuietTool -Label 'T' -Command $script:shell -Arguments '-NoProfile', '-Command', "'texte'; exit 3" 6>&1
+            @($console)[-1] | Should -Be 3
+            $kept = @(Get-ChildItem -LiteralPath $TestDrive -Filter '*.txt' | Where-Object Length -gt 0)
+            $kept.Count | Should -Be 1
+            [IO.File]::ReadAllText($kept[0].FullName) | Should -Match 'texte'
+        }
+    }
+
+    Context 'SFC result' {
+        BeforeAll {
+            $script:since = [datetime]'2026-11-07 10:00:00'
+            function Get-TestSfcResult {
+                param([string[]]$Lines)
+                $path = Join-Path $TestDrive 'CBS.log'
+                [IO.File]::WriteAllLines($path, $Lines)
+                return Get-SfcResult -LogPath $path -Since $script:since
+            }
+        }
+        It 'finds nothing on a clean check' {
+            $result = Get-TestSfcResult '2026-11-07 10:05:00, Info CSI 00000001 [SR] Verify complete'
+            $result.Repaired | Should -Be 0
+            $result.Unrepaired | Should -Be 0
+        }
+        It 'counts repaired and unrepaired files' {
+            $result = Get-TestSfcResult @(
+                '2026-11-07 10:01:00, Info CSI 00000001 [SR] Cannot repair member file [l:9]"a.dll"'
+                '2026-11-07 10:02:00, Info CSI 00000002 [SR] Repaired file \SystemRoot\b.dll'
+                '2026-11-07 10:05:00, Info CSI 00000003 [SR] Verify complete')
+            $result.Repaired | Should -Be 1
+            $result.Unrepaired | Should -Be 1
+        }
+        It 'ignores earlier checks' {
+            $result = Get-TestSfcResult @(
+                '2026-11-07 09:00:00, Info CSI 00000001 [SR] Cannot repair member file [l:9]"a.dll"'
+                '2026-11-07 10:05:00, Info CSI 00000002 [SR] Verify complete')
+            $result.Unrepaired | Should -Be 0
+        }
+        It 'does not report a result when the check did not finish or the log is missing' {
+            Get-TestSfcResult '2026-11-07 10:01:00, Info CSI 00000001 [SR] Verifying 100 components' | Should -BeNullOrEmpty
+            Get-SfcResult -LogPath (Join-Path $TestDrive 'none.log') -Since $script:since | Should -BeNullOrEmpty
+        }
+    }
+}
+
+Describe 'Loader' {
+    It 'grows with time and only the end of the task completes it' {
+        Get-LoaderStars -Seconds 0 -Width 40 | Should -Be 1
+        Get-LoaderStars -Seconds 120 -Width 40 | Should -Be 20
+        Get-LoaderStars -Seconds 600 -Width 40 | Should -BeGreaterThan (Get-LoaderStars -Seconds 120 -Width 40)
+        Get-LoaderStars -Seconds 9999999 -Width 40 | Should -Be 39
+    }
+    It 'returns what the task returns and draws only stars, without ANSI codes' {
+        $output = @(Invoke-WithLoader 'Task' { 'first'; 'second' } 6>&1)
+        $output | Where-Object { $_ -is [string] } | Should -Be @('first', 'second')
+        ($output -join '') | Should -Match '^\s*Task\s+\*+'
+        ($output -join '') | Should -Not -Match '\x1b'
+    }
+    It 'draws in the background and stops as soon as the task ends' {
+        $clock = [Diagnostics.Stopwatch]::StartNew()
+        Invoke-WithLoader 'Task' { Start-Sleep -Milliseconds 700 } *> $null
+        $clock.Elapsed.TotalSeconds | Should -BeLessThan 2.5
+    }
+    It 'does not hide the variables of the caller' {
+        $label = 'volume name'; $width = 'w'; $state = 's'; $output = 'o'
+        Invoke-WithLoader 'Task' { "$label $width $state $output" } 6> $null | Should -Be 'volume name w s o'
+    }
+    It 'lets an error of the task through and does not hide it' {
+        { Invoke-WithLoader 'Task' { throw 'failed' } 6> $null } | Should -Throw 'failed'
+    }
+    It 'colors the end of the line according to the result' {
+        $script:colors = @()
+        Mock Write-Host { $script:colors += "$ForegroundColor" }
+        Invoke-WithLoader 'Task' { 1 } -LoaderFailedWhen { param($r) $r[-1] -ne 0 } | Out-Null
+        $script:colors[-1] | Should -Be 'Red'
+        Invoke-WithLoader 'Task' { 0 } -LoaderFailedWhen { param($r) $r[-1] -ne 0 } | Out-Null
+        $script:colors[-1] | Should -Be 'Green'
+    }
+}
+
+Describe 'Launcher arguments' {
+    It 'keeps text PowerShell would have interpreted' -ForEach @(
+        @{ Line = "-Source C:\it's(1)"; Expected = "C:\it's(1)" }
+        @{ Line = '-Source "D:\My $HOME `x & (a)\"'; Expected = 'D:\My $HOME `x & (a)\' }
+        @{ Line = '-Source "it''s"'; Expected = "it's" }
+        @{ Line = '-Source:"D:\a b"'; Expected = 'D:\a b' }
+        @{ Line = '-Source E:\;calc'; Expected = 'E:\;calc' }
+    ) {
+        (ConvertTo-LauncherParameters -CommandLine $Line).Source | Should -BeExactly $Expected
+    }
+    It 'reads several arguments and accepts none' {
+        $parameters = ConvertTo-LauncherParameters -CommandLine '-Task Backup -FullEvery 7 -Verbose'
+        $parameters.Task | Should -Be 'Backup'
+        $parameters.FullEvery | Should -Be '7'
+        $parameters.Verbose | Should -BeTrue
+        (ConvertTo-LauncherParameters -CommandLine '').Count | Should -Be 0
+    }
+    It 'explains what is wrong' {
+        { ConvertTo-LauncherParameters -CommandLine 'stray' } | Should -Throw '*stray*'
+        { ConvertTo-LauncherParameters -CommandLine '-Source' } | Should -Throw '*-Source needs a value*'
+    }
+}
+
+Describe 'Retention' {
+    It 'does not let a full backup with many failures replace a good chain' -ForEach @(
+        @{ FileCount = 90; Failed = 10; Expected = $true }
+        @{ FileCount = 89; Failed = 11; Expected = $false }
+        @{ FileCount = 60; Failed = 40; Expected = $false }
+        @{ FileCount = 100; Failed = 0; Expected = $true }
+    ) {
+        Test-BackupCountsForRetention -Backup ([pscustomobject]@{ FileCount = $FileCount; Failed = $Failed; Shrunk = $false }) | Should -Be $Expected
+    }
+}
+
+Describe 'Processes' {
+    It 'refuses Windows processes and itself' -ForEach @(
+        @{ Name = 'lsass'; Id = 800; Expected = $true }
+        @{ Name = 'svchost'; Id = 900; Expected = $true }
+        @{ Name = 'notepad'; Id = 4; Expected = $true }
+        @{ Name = 'notepad'; Id = 5000; Expected = $false }
+    ) {
+        Test-ProtectedProcess -Name $Name -Id $Id | Should -Be $Expected
+    }
+    It 'refuses the process running WinToolBox' {
+        Test-ProtectedProcess -Name 'powershell' -Id $PID | Should -BeTrue
+    }
+    It 'computes the CPU share over the interval and all processors, without Idle' {
+        $before = @([pscustomobject]@{ Id = 1; Name = 'a'; Cpu = 10.0; Memory = 1 }, [pscustomobject]@{ Id = 2; Name = 'Idle'; Cpu = 0.0; Memory = 1 })
+        $after = @([pscustomobject]@{ Id = 1; Name = 'a'; Cpu = 12.0; Memory = 1 }, [pscustomobject]@{ Id = 2; Name = 'Idle'; Cpu = 9.0; Memory = 1 })
+        $rows = @(Get-ProcessCpuRows -Before $before -After $after -Seconds 2 -Processors 4)
+        $rows.Count | Should -Be 1
+        $rows[0].Percent | Should -Be 25
+    }
+    It 'keeps a small CPU share' {
+        $before = @([pscustomobject]@{ Id = 1; Name = 'a'; Cpu = 10.0; Memory = 1 })
+        $after = @([pscustomobject]@{ Id = 1; Name = 'a'; Cpu = 10.05; Memory = 1 })
+        (Get-ProcessCpuRows -Before $before -After $after -Seconds 1 -Processors 2)[0].Percent | Should -Be 2.5
+    }
+    It 'reads real processes' {
+        @(Get-ProcessSample).Count | Should -BeGreaterThan 0
+    }
+    It 'never offers Realtime' {
+        $script:ProcessPriorities | Should -Not -Contain 'RealTime'
+    }
+
+    Context 'Ending a process' {
+        BeforeEach {
+            $script:target = [pscustomobject]@{ Name = 'notepad'; Id = 5000; StartTime = [datetime]'2026-11-07 10:00:00' }
+            Mock Read-ProcessSelection { $script:target }
+            Mock Stop-Process { }
+            Mock Confirm-Action { $true }
+            Mock Write-Host { }
+            Mock Start-Sleep { }
+        }
+        It 'does nothing without confirmation' {
+            Mock Confirm-Action { $false }
+            Invoke-ProcessStop
+            Should -Invoke Stop-Process -Times 0
+        }
+        It 'never touches a protected process, even after a yes' {
+            $script:target = [pscustomobject]@{ Name = 'lsass'; Id = 800; StartTime = [datetime]'2026-11-07 10:00:00' }
+            Invoke-ProcessStop
+            Should -Invoke Stop-Process -Times 0
+            Should -Invoke Confirm-Action -Times 0
+        }
+        It 'does not end another process that reused the PID' {
+            Mock Get-Process { [pscustomobject]@{ Name = 'notepad'; Id = 5000; StartTime = [datetime]'2026-11-07 11:00:00' } }
+            Invoke-ProcessStop
+            Should -Invoke Stop-Process -Times 0
+        }
+        It 'ends the process and reports success only once it is gone' {
+            $script:calls = 0
+            Mock Get-Process { $script:calls++; if ($script:calls -eq 1) { $script:target } }
+            Mock Write-Status { }
+            Invoke-ProcessStop
+            Should -Invoke Stop-Process -Times 1 -ParameterFilter { $Id -eq 5000 }
+            Should -Invoke Write-Status -Times 1 -ParameterFilter { $Level -eq 'OK' }
+        }
+        It 'does not claim success when the process survives' {
+            Mock Get-Process { $script:target }
+            Mock Write-Status { }
+            Invoke-ProcessStop
+            Should -Invoke Write-Status -Times 0 -ParameterFilter { $Level -eq 'OK' }
+            Should -Invoke Write-Status -Times 1 -ParameterFilter { $Level -eq 'WARN' -and $Message -like '*still running*' }
+        }
+    }
+}
+
+Describe 'Performance' {
+    BeforeAll {
+        $script:engines = @(
+            [pscustomobject]@{ Name = 'pid_100_luid_0x00000000_0x0000C2D2_phys_0_eng_0_engtype_3D'; UtilizationPercentage = 30 }
+            [pscustomobject]@{ Name = 'pid_200_luid_0x00000000_0x0000C2D2_phys_0_eng_0_engtype_3D'; UtilizationPercentage = 20 }
+            [pscustomobject]@{ Name = 'pid_100_luid_0x00000000_0x0000C2D2_phys_0_eng_3_engtype_Copy'; UtilizationPercentage = 40 }
+            [pscustomobject]@{ Name = 'pid_300_luid_0x00000000_0x00001111_phys_0_eng_0_engtype_3D'; UtilizationPercentage = 0 }
+        )
+        $script:gpuMemory = @([pscustomobject]@{ Name = 'luid_0x00000000_0x0000C2D2_phys_0'; DedicatedUsage = 1GB })
+    }
+    It 'draws a bar of stars that always has the same width' -ForEach @(
+        @{ Percent = 0; Stars = 0 }
+        @{ Percent = 50; Stars = 12 }
+        @{ Percent = 100; Stars = 24 }
+        @{ Percent = 0.1; Stars = 1 }
+        @{ Percent = 250; Stars = 24 }
+    ) {
+        $bar = Format-UsageBar -Percent $Percent
+        $bar.Stars.Length | Should -Be $Stars
+        ($bar.Stars + $bar.Rest).Length | Should -Be 24
+    }
+    It 'keeps fractions of a percent' {
+        $engines = @([pscustomobject]@{ Name = 'pid_1_luid_0x0_0x1_phys_0_eng_0_engtype_3D'; UtilizationPercentage = 12.5 })
+        (ConvertTo-GpuUsage -Engines $engines)[0].Percent | Should -Be 12.5
+        (ConvertTo-DiskUsage -Rows @([pscustomobject]@{ Name = '0 C:'; PercentIdleTime = 99.5; DiskReadBytesPersec = 0; DiskWriteBytesPersec = 0 }))[0].Percent | Should -Be 0.5
+        (ConvertTo-NetworkUsage -Rows @([pscustomobject]@{ Name = 'E'; CurrentBandwidth = 1000000000; BytesReceivedPersec = 1000000; BytesSentPersec = 0 }))[0].Percent | Should -Be 0.8
+    }
+    It 'colors by load' {
+        Get-UsageColor -Percent 10 | Should -Be 'Green'
+        Get-UsageColor -Percent 75 | Should -Be 'Yellow'
+        Get-UsageColor -Percent 95 | Should -Be 'Red'
+    }
+    It 'reads the CPU total and the busiest thread' {
+        $cpu = ConvertTo-CpuUsage -Rows @(
+            [pscustomobject]@{ Name = '_Total'; PercentProcessorTime = 25 }
+            [pscustomobject]@{ Name = '0'; PercentProcessorTime = 10 }
+            [pscustomobject]@{ Name = '1'; PercentProcessorTime = 40 })
+        $cpu.Percent | Should -Be 25
+        $cpu.Threads | Should -Be 2
+        $cpu.Busiest | Should -Be 40
+    }
+    It 'computes memory in bytes' {
+        $memory = ConvertTo-MemoryUsage -System ([pscustomobject]@{ TotalVisibleMemorySize = 1048576; FreePhysicalMemory = 262144 }) -Counters ([pscustomobject]@{ CommittedBytes = 1GB; CommitLimit = 2GB })
+        $memory.Percent | Should -Be 75
+        $memory.Total | Should -Be 1GB
+        $memory.Commit.Percent | Should -Be 50
+    }
+    It 'adds processes on one engine and takes the busiest engine, as the Task Manager does' {
+        $gpus = @(ConvertTo-GpuUsage -Engines $script:engines -Memory $script:gpuMemory -Hardware @([pscustomobject]@{ Name = 'Test GPU'; Memory = 8GB }))
+        $gpus.Count | Should -Be 1
+        $gpus[0].Percent | Should -Be 50
+        $gpus[0].Label | Should -Be 'Test GPU'
+        $gpus[0].Used | Should -Be 1GB
+        $gpus[0].Total | Should -Be 8GB
+    }
+    It 'does not guess which name goes with which adapter' {
+        $gpus = @(ConvertTo-GpuUsage -Engines $script:engines -Memory $script:gpuMemory -Hardware @([pscustomobject]@{ Name = 'A'; Memory = 1 }, [pscustomobject]@{ Name = 'B'; Memory = 2 }))
+        $gpus[0].Label | Should -Be 'GPU 1'
+        $gpus[0].Total | Should -Be 0
+    }
+    It 'caps a GPU at 100 and reports nothing without counters' {
+        $busy = @(1..3 | ForEach-Object { [pscustomobject]@{ Name = "pid_$($_)_luid_0x0_0x1_phys_0_eng_0_engtype_3D"; UtilizationPercentage = 60 } })
+        (ConvertTo-GpuUsage -Engines $busy)[0].Percent | Should -Be 100
+        @(ConvertTo-GpuUsage -Engines @() -Memory @()).Count | Should -Be 0
+    }
+    It 'ranks processes by GPU use' {
+        $rows = @(Get-GpuProcessRows -Engines $script:engines -Memory @([pscustomobject]@{ Name = 'pid_200_luid_0x0_0x1_phys_0'; DedicatedUsage = 1GB }) -Names @{ 100 = 'game'; 200 = 'browser' })
+        $rows.Count | Should -Be 2
+        $rows[0].Name | Should -Be 'game'
+        $rows[0].Percent | Should -Be 40
+        $rows[1].Memory | Should -Be 1GB
+    }
+    It 'uses idle time for disks, leaves out the total and stays within 100' {
+        $disks = @(ConvertTo-DiskUsage -Rows @(
+                [pscustomobject]@{ Name = '_Total'; PercentIdleTime = 0; DiskReadBytesPersec = 0; DiskWriteBytesPersec = 0 }
+                [pscustomobject]@{ Name = '0 C:'; PercentIdleTime = 70; DiskReadBytesPersec = 1MB; DiskWriteBytesPersec = 2MB }))
+        $disks.Count | Should -Be 1
+        $disks[0].Label | Should -Be 'Disk 0 C:'
+        $disks[0].Percent | Should -Be 30
+        $disks[0].Write | Should -Be 2MB
+    }
+    It 'computes network use against the link speed, without virtual adapters' {
+        $rows = @(ConvertTo-NetworkUsage -Rows @(
+                [pscustomobject]@{ Name = 'Ethernet'; CurrentBandwidth = 1000000000; BytesReceivedPersec = 12500000; BytesSentPersec = 0 }
+                [pscustomobject]@{ Name = 'isatap.local'; CurrentBandwidth = 100000; BytesReceivedPersec = 0; BytesSentPersec = 0 }
+                [pscustomobject]@{ Name = 'Unplugged'; CurrentBandwidth = 0; BytesReceivedPersec = 0; BytesSentPersec = 0 }))
+        $rows.Count | Should -Be 1
+        $rows[0].Percent | Should -Be 10
+    }
+    It 'shows every section even when no counter can be read' {
+        Mock Get-PerfRows { @() }
+        Mock Get-GpuHardware { }
+        $script:shown = @()
+        Mock Write-Status { $script:shown += $Message }
+        Mock Write-Host { }
+        Write-PerformanceSnapshot -Snapshot (Get-PerformanceSnapshot)
+        $script:shown.Count | Should -Be 5
+    }
+    It 'reads every class by its name, which does not depend on the Windows language' {
+        (Get-Content -Raw ([IO.Path]::Combine($PSScriptRoot, '..', 'src', 'modules', 'Performance.ps1'))) -match '(?m)^[^#]*\bGet-Counter\b' | Should -BeFalse
+    }
+}
+
+Describe 'Main menu' {
+    It 'has one unique key per entry and every new module is loaded' {
+        $entry = [IO.File]::ReadAllText([IO.Path]::Combine($PSScriptRoot, '..', 'src', 'WinToolBox.ps1'))
+        $keys = @([regex]::Matches($entry, "Key = '(\w+)'") | ForEach-Object { $_.Groups[1].Value })
+        $keys.Count | Should -Be 9
+        @($keys | Sort-Object -Unique).Count | Should -Be 9
+        $entry | Should -Match "'Processes', 'Performance'"
+    }
+}
+
 Describe 'Elevated restart' {
     It 'quotes the launcher path for cmd' {
         New-ElevatedLauncherArguments -LauncherPath 'C:\My Tools & Co\WintoolBox.bat' |
@@ -213,6 +552,12 @@ Describe 'Launcher' -Skip:($env:OS -ne 'Windows_NT') {
     It 'returns 1 when the backup fails' {
         $missing = Join-Path $TestDrive 'missing'
         Invoke-Launcher @('-Task', 'Backup', '-Source', $missing, '-Destination', (Join-Path $TestDrive 'target')) | Should -Be 1
+    }
+    It 'accepts an unquoted apostrophe and parenthesis' {
+        $source = Join-Path $TestDrive "it's(1)"
+        $repo = Join-Path $TestDrive 'target2'
+        [void](Write-TestFile $source 'keep.txt' 'keep')
+        Invoke-Launcher @('-Task', 'Backup', '-Source', $source, '-Destination', $repo, '-Mode', 'Full') | Should -Be 0
     }
     It 'returns 1 when an argument is rejected' {
         Invoke-Launcher @('-Task', 'NotATask') | Should -Be 1

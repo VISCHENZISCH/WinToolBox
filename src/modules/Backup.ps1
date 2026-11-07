@@ -582,10 +582,12 @@ function Restore-Backup {
 
 # A full backup that is empty, mostly failed, or made just after the source lost most of its
 # files is kept on disk but does not count as a good chain, so it can never push out a real one.
+# A full backup replaces a good chain only if at most 10% of its files failed: otherwise repeated
+# failures, such as open files in a scheduled task, could push good chains out of retention.
 function Test-BackupCountsForRetention {
     param([Parameter(Mandatory)][object]$Backup)
     if ($Backup.FileCount -le 0 -or $Backup.Shrunk) { return $false }
-    return ($Backup.Failed -le $Backup.FileCount)
+    return (10 * $Backup.Failed -le $Backup.FileCount + $Backup.Failed)
 }
 
 # Keeps the N most recent good chains. A chain (one full backup and its incrementals)
@@ -609,12 +611,11 @@ function Start-SystemImageBackup {
     param([Parameter(Mandatory)][string]$TargetDrive)
     if ($TargetDrive -notmatch '^[A-Za-z]:$') { throw 'Enter a drive in the format E:' }
     if ($TargetDrive -ieq $env:SystemDrive) { throw "The system image cannot be stored on the system drive." }
-    & wbadmin.exe start backup "-backupTarget:$TargetDrive" -allCritical -quiet | Out-Host
-    if ($LASTEXITCODE -ne 0) { throw "wbadmin failed (code $LASTEXITCODE)." }
+    $code = Invoke-QuietTool -Label 'System image' -Command 'wbadmin.exe' -Arguments 'start', 'backup', "-backupTarget:$TargetDrive", '-allCritical', '-quiet'
+    if ($code -ne 0) { throw "wbadmin failed (code $code)." }
     Write-Log -Message "System image created on $TargetDrive."
 }
 
-# A trailing \ would escape the closing quote: "D:\" must be written "D:\\".
 function Register-BackupSchedule {
     param(
         [Parameter(Mandatory)][string]$Name,
@@ -746,7 +747,8 @@ function Invoke-BackupWizard {
     if (-not $source -or -not $destination) { return }
     $mode = if ((Read-Text 'Type: [I]ncremental or [F]ull') -ieq 'F') { 'Full' } else { 'Incremental' }
     $useVss = (Test-IsAdmin) -and (Confirm-Action 'Include open files using VSS?')
-    Write-BackupResult -Result (New-Backup -Source $source -Destination $destination -Mode $mode -UseVss:$useVss)
+    $result = Invoke-WithLoader 'Backing up' { New-Backup -Source $source -Destination $destination -Mode $mode -UseVss:$useVss }
+    Write-BackupResult -Result $result
 }
 
 function Invoke-RestoreWizard {
@@ -760,7 +762,7 @@ function Invoke-RestoreWizard {
     # Off by default: permissions from another account or machine can lock the user out of the files.
     $restoreAcls = [IO.File]::Exists([IO.Path]::Combine($backup.Path, 'acls.txt')) -and
     (Confirm-Action 'Also restore the saved NTFS permissions? Answer yes only when restoring to the original place.')
-    $result = Restore-Backup -BackupPath $backup.Path -Target $target -Filter $filter -RestoreAcls:$restoreAcls
+    $result = Invoke-WithLoader 'Restoring' { Restore-Backup -BackupPath $backup.Path -Target $target -Filter $filter -RestoreAcls:$restoreAcls }
     Write-Section 'Result'
     if ($result.NoMatch) {
         Write-Status WARN "No file matches the filter '$filter'. Nothing was restored."
@@ -778,7 +780,7 @@ function Invoke-RestoreWizard {
 function Invoke-VerifyWizard {
     $backup = Select-Backup
     if (-not $backup) { return }
-    $result = Test-Backup -BackupPath $backup.Path
+    $result = Invoke-WithLoader 'Verifying' { Test-Backup -BackupPath $backup.Path }
     Write-Section 'Result'
     if ($result.Ok) { Write-Status OK "$($result.Checked) files verified, no problems found." }
     else {
@@ -849,7 +851,7 @@ function Invoke-SystemImageWizard {
 }
 
 function Invoke-RestorePoint {
-    Checkpoint-Computer -Description "WinToolBox $(Get-Date -Format 'yyyy-MM-dd HH:mm')" -RestorePointType MODIFY_SETTINGS
+    Invoke-WithLoader 'Creating a restore point' { Checkpoint-Computer -Description "WinToolBox $(Get-Date -Format 'yyyy-MM-dd HH:mm')" -RestorePointType MODIFY_SETTINGS }
     Write-Status OK 'Restore point requested (Windows limits this to one every 24 hours).'
 }
 

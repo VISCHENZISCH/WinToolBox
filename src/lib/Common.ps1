@@ -166,7 +166,8 @@ function Write-Details {
     param([Parameter(Mandatory)][Collections.IDictionary]$Items)
     $width = ($Items.Keys | ForEach-Object { "$_".Length } | Measure-Object -Maximum).Maximum
     foreach ($key in $Items.Keys) {
-        Write-Host ("   {0}  {1}" -f "$key".PadRight($width), (Format-Cell $Items[$key]))
+        Write-Host ('   {0}  ' -f "$key".PadRight($width)) -ForegroundColor Cyan -NoNewline
+        Write-Host (Format-Cell $Items[$key])
     }
 }
 
@@ -273,7 +274,9 @@ function Show-Menu {
                 }
                 $locked = $item.Admin -and -not $isAdmin
                 $color = if ($locked) { 'DarkGray' } elseif ($item.Danger) { 'Yellow' } else { 'Gray' }
-                Write-Host ('   [{0}] {1}' -f $item.Key, $item.Label.PadRight($labelWidth)) -ForegroundColor $color -NoNewline
+                $keyColor = if ($locked) { 'DarkGray' } elseif ($item.Danger) { 'Yellow' } else { 'Cyan' }
+                Write-Host ('   [{0}] ' -f $item.Key) -ForegroundColor $keyColor -NoNewline
+                Write-Host $item.Label.PadRight($labelWidth) -ForegroundColor $color -NoNewline
                 $note = @($(if ($locked) { '(admin required)' }), $item.Hint) | Where-Object { $_ }
                 Write-Host ('  ' + ($note -join ' ')) -ForegroundColor DarkGray
             }
@@ -413,7 +416,7 @@ function New-BypassCommandLine {
         [switch]$NonInteractive
     )
     $switches = if ($NonInteractive) { '-NoProfile -NonInteractive' } else { '-NoLogo -NoProfile' }
-    $command = "`$ErrorActionPreference='Stop'; try { Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force } catch { }; " +
+    $command = "`$ErrorActionPreference='Stop'; if (-not (Get-ExecutionPolicy -List | Where-Object { `$_.Scope -match 'Policy`$' -and `$_.ExecutionPolicy -ne 'Undefined' })) { try { Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force } catch { [Console]::Error.WriteLine(`$_) } }; " +
     "try { & $(ConvertTo-PowerShellLiteral $ScriptPath) $ScriptArguments; exit `$LASTEXITCODE } catch { [Console]::Error.WriteLine(`$_); exit 1 }"
     return "$switches -Command `"$command`""
 }
@@ -423,4 +426,121 @@ function New-BypassCommandLine {
 function New-ElevatedLauncherArguments {
     param([Parameter(Mandatory)][string]$LauncherPath)
     return "/d /c `"`"$LauncherPath`"`""
+}
+
+# Messages from .NET and PowerShell, and number formats, otherwise follow the Windows language.
+function Set-EnglishCulture {
+    $culture = [Globalization.CultureInfo]::GetCultureInfo('en-US')
+    [Threading.Thread]::CurrentThread.CurrentCulture = $culture
+    [Threading.Thread]::CurrentThread.CurrentUICulture = $culture
+}
+
+# Splits the command line the way cmd quotes it and returns named parameters to splat. Nothing is
+# parsed as PowerShell, so an apostrophe, a parenthesis or a $ in a path stays plain text.
+function ConvertTo-LauncherParameters {
+    param([string]$CommandLine)
+    $tokens = @([regex]::Matches("$CommandLine", '(?:"[^"]*"|[^\s"])+') | ForEach-Object { $_.Value.Replace('"', '') })
+    $parameters = @{}
+    for ($i = 0; $i -lt $tokens.Count; $i++) {
+        if ($tokens[$i] -notmatch '^-([A-Za-z]+)(?::(.*))?$') { throw "Unexpected argument '$($tokens[$i])'. Arguments are written -Name value." }
+        $name = $Matches[1]
+        if ($null -ne $Matches[2]) { $parameters[$name] = $Matches[2] }
+        elseif ($name -in 'Verbose', 'Debug') { $parameters[$name] = $true }
+        elseif ($i + 1 -ge $tokens.Count) { throw "The argument -$name needs a value." }
+        else { $parameters[$name] = $tokens[++$i] }
+    }
+    return $parameters
+}
+
+# How many stars of the loader are drawn. The length of most tasks is unknown, so the line keeps
+# growing ever more slowly and only the end of the task can complete it.
+function Get-LoaderStars {
+    param([Parameter(Mandatory)][double]$Seconds, [Parameter(Mandatory)][int]$Width, [double]$HalfwaySeconds = 120)
+    $stars = [int][math]::Floor($Width * $Seconds / ($Seconds + $HalfwaySeconds))
+    return [math]::Max(1, [math]::Min($Width - 1, $stars))
+}
+
+# Runs a task while a line of stars grows, and fills the line when it ends: green, or red if it failed.
+# The task stays in this thread; only the drawing moves to a background one.
+# $LoaderTask reads its caller's variables through the scope chain, so a variable named here could
+# hide one of theirs: for example $label in a format command. Hence the prefix on every name.
+function Invoke-WithLoader {
+    param(
+        [Parameter(Mandatory, Position = 0)][string]$LoaderLabel,
+        [Parameter(Mandatory, Position = 1)][scriptblock]$LoaderTask,
+        [scriptblock]$LoaderFailedWhen
+    )
+    # The stars replace the progress banner of PowerShell, for the task and what it calls.
+    $ProgressPreference = 'SilentlyContinue'
+    $loaderWidth = [math]::Max(10, $script:RuleWidth - $LoaderLabel.Length - 2)
+    Write-Host "  $LoaderLabel  " -ForegroundColor White -NoNewline
+
+    $loaderState = [hashtable]::Synchronized(@{ Stop = $false; Drawn = 0 })
+    $loaderShell = $null
+    $loaderAsync = $null
+    try {
+        $loaderShell = [powershell]::Create()
+        # param must come first: without it $State would be empty and the loop would never end.
+        $loaderScript = "param(`$State, `$Width)`nfunction Get-LoaderStars {$(${function:Get-LoaderStars})}`n" + @'
+$clock = [Diagnostics.Stopwatch]::StartNew()
+$color = [Console]::ForegroundColor
+while (-not $State.Stop) {
+    $stars = Get-LoaderStars -Seconds $clock.Elapsed.TotalSeconds -Width $Width
+    if ($stars -gt $State.Drawn) {
+        [Console]::ForegroundColor = 'Cyan'
+        [Console]::Write('*' * ($stars - $State.Drawn))
+        [Console]::ForegroundColor = $color
+        $State.Drawn = $stars
+    }
+    Start-Sleep -Milliseconds 200
+}
+'@
+        [void]$loaderShell.AddScript($loaderScript).AddArgument($loaderState).AddArgument($loaderWidth)
+        $loaderAsync = $loaderShell.BeginInvoke()
+    }
+    catch { Write-Verbose "Loader not animated: $($_.Exception.Message)" }
+
+    $loaderFailed = $true
+    try {
+        $loaderOutput = @(& $LoaderTask)
+        $loaderFailed = ($LoaderFailedWhen -and (& $LoaderFailedWhen $loaderOutput))
+    }
+    finally {
+        $loaderState.Stop = $true
+        # Bounded wait: a drawing problem must never hold back the end of a real task.
+        try {
+            if ($loaderAsync -and $loaderAsync.AsyncWaitHandle.WaitOne(3000)) {
+                $loaderShell.EndInvoke($loaderAsync)
+                $loaderShell.Dispose()
+            }
+            elseif ($loaderAsync) { [void]$loaderShell.BeginStop($null, $null) }
+            elseif ($loaderShell) { $loaderShell.Dispose() }
+        }
+        catch { Write-Verbose "Loader stopped: $($_.Exception.Message)" }
+        $loaderColor = if ($loaderFailed) { 'Red' } else { 'Green' }
+        Write-Host ('*' * [math]::Max(0, $loaderWidth - $loaderState.Drawn)) -ForegroundColor $loaderColor
+    }
+    return $loaderOutput
+}
+
+# For Windows tools with no way to choose their language: their text stays out of the console and
+# the user sees the loader instead. The raw output is kept only if the tool fails.
+# Returns the exit code.
+function Invoke-QuietTool {
+    param(
+        [Parameter(Mandatory)][string]$Label,
+        [Parameter(Mandatory)][string]$Command,
+        [Parameter(Mandatory)][string[]]$Arguments
+    )
+    $folder = if ($script:LogFile) { Split-Path -Parent $script:LogFile } else { [IO.Path]::GetTempPath() }
+    $stem = [IO.Path]::Combine($folder, ('{0}-{1}' -f [IO.Path]::GetFileNameWithoutExtension($Command), (Get-Date -Format 'yyyyMMdd-HHmmss')))
+    $outputFile = "$stem.txt"
+    $errorFile = "$stem.err.txt"
+    $code = Invoke-WithLoader $Label {
+        (Start-Process -FilePath $Command -ArgumentList $Arguments -NoNewWindow -Wait -PassThru -RedirectStandardOutput $outputFile -RedirectStandardError $errorFile).ExitCode
+    } -LoaderFailedWhen { param($result) $result[-1] -ne 0 }
+    if ($code -eq 0) { Remove-Item -LiteralPath $outputFile -Force -ErrorAction SilentlyContinue }
+    else { Write-Status INFO "Tool output, in the Windows language: $outputFile" }
+    if ((Get-Item -LiteralPath $errorFile -ErrorAction SilentlyContinue).Length -eq 0) { Remove-Item -LiteralPath $errorFile -Force -ErrorAction SilentlyContinue }
+    return $code
 }

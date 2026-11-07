@@ -24,10 +24,11 @@ $script:AppRoot = Split-Path -Parent $PSScriptRoot
 $script:EntryScript = $PSCommandPath
 
 . (Join-Path $PSScriptRoot 'lib\Common.ps1')
-foreach ($module in 'Backup', 'Disk', 'Maintenance', 'System', 'Network', 'Users', 'Security') {
+foreach ($module in 'Backup', 'Disk', 'Maintenance', 'System', 'Processes', 'Performance', 'Network', 'Users', 'Security') {
     . (Join-Path $PSScriptRoot "modules\$module.ps1")
 }
 
+Set-EnglishCulture
 Initialize-App -Root $script:AppRoot
 
 if ($Task -eq 'Backup') {
@@ -42,7 +43,6 @@ if ($Task -eq 'Backup') {
     }
 }
 
-try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { Write-Verbose 'Console encoding left unchanged.' }
 $Host.UI.RawUI.WindowTitle = "WinToolBox $script:AppVersion"
 
 if (-not (Test-IsAdmin)) {
@@ -67,13 +67,24 @@ $header = {
 # Read once: scheduled tasks run unattended, so this is where their failures become visible.
 $script:TaskProblems = @(Get-ScheduledBackupProblems)
 
-Show-Menu -Title "WinToolBox $script:AppVersion" -ExitLabel 'Quit' -Header $header -Items @(
-    @{ Section = 'DATA PROTECTION'; Key = '1'; Label = 'Backup and restore'; Hint = 'versions, verification, schedules, system image'; Submenu = $true; Action = { Show-BackupMenu } }
-    @{ Section = 'STORAGE'; Key = '2'; Label = 'Disks and partitions'; Hint = 'health, scan, create, resize, format'; Submenu = $true; Action = { Show-DiskMenu } }
-    @{ Section = 'STORAGE'; Key = '3'; Label = 'Cleanup and repair'; Hint = 'temporary files, DISM, SFC'; Submenu = $true; Action = { Show-MaintenanceMenu } }
-    @{ Section = 'SYSTEM'; Key = '4'; Label = 'System information'; Hint = 'hardware, processes, startup, services'; Submenu = $true; Action = { Show-SystemMenu } }
-    @{ Section = 'SYSTEM'; Key = '5'; Label = 'Users and groups'; Hint = 'local accounts and group members'; Submenu = $true; Action = { Show-UsersMenu } }
-    @{ Section = 'NETWORK AND SECURITY'; Key = '6'; Label = 'Network'; Hint = 'addresses, connection test, ports, DNS'; Submenu = $true; Action = { Show-NetworkMenu } }
-    @{ Section = 'NETWORK AND SECURITY'; Key = '7'; Label = 'Security and logs'; Hint = 'read-only audit, tool log'; Submenu = $true; Action = { Show-SecurityMenu } }
-)
+# Set only for the menu and restored after it: the console belongs to the cmd window that started us,
+# and cmd would otherwise keep showing accents wrongly once the tool has closed.
+$originalEncoding = [Console]::OutputEncoding
+try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { Write-Verbose 'Console encoding left unchanged.' }
+try {
+    Show-Menu -Title "WinToolBox $script:AppVersion" -ExitLabel 'Quit' -Header $header -Items @(
+        @{ Section = 'DATA PROTECTION'; Key = '1'; Label = 'Backup and restore'; Hint = 'versions, verification, schedules, system image'; Submenu = $true; Action = { Show-BackupMenu } }
+        @{ Section = 'STORAGE'; Key = '2'; Label = 'Disks and partitions'; Hint = 'health, scan, create, resize, format'; Submenu = $true; Action = { Show-DiskMenu } }
+        @{ Section = 'STORAGE'; Key = '3'; Label = 'Cleanup and repair'; Hint = 'temporary files, DISM, SFC'; Submenu = $true; Action = { Show-MaintenanceMenu } }
+        @{ Section = 'SYSTEM'; Key = '4'; Label = 'System information'; Hint = 'hardware, startup, services'; Submenu = $true; Action = { Show-SystemMenu } }
+        @{ Section = 'SYSTEM'; Key = '5'; Label = 'Processes'; Hint = 'top CPU, memory, GPU, details, end, priority'; Submenu = $true; Action = { Show-ProcessMenu } }
+        @{ Section = 'SYSTEM'; Key = '6'; Label = 'Performance'; Hint = 'live CPU, RAM, GPU, disks, network'; Submenu = $true; Action = { Show-PerformanceMenu } }
+        @{ Section = 'SYSTEM'; Key = '7'; Label = 'Users and groups'; Hint = 'local accounts and group members'; Submenu = $true; Action = { Show-UsersMenu } }
+        @{ Section = 'NETWORK AND SECURITY'; Key = '8'; Label = 'Network'; Hint = 'addresses, connection test, ports, DNS'; Submenu = $true; Action = { Show-NetworkMenu } }
+        @{ Section = 'NETWORK AND SECURITY'; Key = '9'; Label = 'Security and logs'; Hint = 'read-only audit, tool log'; Submenu = $true; Action = { Show-SecurityMenu } }
+    )
+}
+finally {
+    try { [Console]::OutputEncoding = $originalEncoding } catch { Write-Verbose 'Console encoding left unchanged.' }
+}
 exit 0

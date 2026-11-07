@@ -25,12 +25,6 @@ function Show-SystemInfo {
         @{ n = 'Size'; e = { Format-Bytes $_.Size } })
 }
 
-function Show-TopProcesses {
-    Write-Table -Rows @(Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 15 Name, Id,
-        @{ n = 'Memory'; e = { Format-Bytes $_.WorkingSet64 } },
-        @{ n = 'CPU (s)'; e = { [math]::Round($_.CPU, 1) } })
-}
-
 function Show-StartupPrograms {
     Write-Table -Empty 'No startup programs.' -Rows @(Get-CimInstance -ClassName Win32_StartupCommand | Sort-Object Name | Select-Object Name, User, Location, Command)
 }
@@ -47,8 +41,7 @@ function Show-FailedServices {
 function Show-SystemMenu {
     Show-Menu -Title 'System information' -Items @(
         @{ Section = 'OVERVIEW'; Key = '1'; Label = 'System summary'; Hint = 'hardware, memory, drives'; Action = { Show-SystemInfo } }
-        @{ Section = 'ACTIVITY'; Key = '2'; Label = 'Top processes by memory'; Action = { Show-TopProcesses } }
-        @{ Section = 'ACTIVITY'; Key = '3'; Label = 'Startup programs'; Action = { Show-StartupPrograms } }
-        @{ Section = 'ACTIVITY'; Key = '4'; Label = 'Failed automatic services'; Action = { Show-FailedServices } }
+        @{ Section = 'ACTIVITY'; Key = '2'; Label = 'Startup programs'; Action = { Show-StartupPrograms } }
+        @{ Section = 'ACTIVITY'; Key = '3'; Label = 'Failed automatic services'; Action = { Show-FailedServices } }
     )
 }
